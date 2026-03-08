@@ -1,1 +1,178 @@
 
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>ScanCraft AI</title>
+
+<meta name="theme-color" content="#020617">
+
+<link rel="manifest" href="manifest.json">
+
+<link rel="stylesheet" href="style.css">
+
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- THREE JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- TensorFlow -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+<!-- GSAP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+<!-- HOWLER SOUND -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+
+</head>
+
+<body>
+
+<div class="app">
+
+<!-- HEADER -->
+
+<header class="header glass">
+
+<h1 class="logo">ScanCraft AI</h1>
+
+<button class="icon-btn">⚙️</button>
+
+</header>
+
+<!-- CAMERA AREA -->
+
+<section class="camera-section">
+
+<div class="camera-box glass">
+
+<video id="camera" autoplay playsinline></video>
+
+<canvas id="overlay"></canvas>
+
+</div>
+
+<!-- GLOWING SCAN BUTTON -->
+
+<div class="scan-area">
+
+<button id="scanBtn" class="scan-btn">
+
+SCAN OBJECT
+
+</button>
+
+</div>
+
+</section>
+
+<!-- FEATURE GRID -->
+
+<section class="feature-grid">
+
+<button class="feature-btn">
+
+🎤 Voice AI
+
+</button>
+
+<button class="feature-btn">
+
+📦 3D Model
+
+</button>
+
+<button class="feature-btn">
+
+🎨 Paint
+
+</button>
+
+<button class="feature-btn">
+
+📖 Info
+
+</button>
+
+<button class="feature-btn">
+
+🖼 Gallery
+
+</button>
+
+<button class="feature-btn">
+
+📤 Share
+
+</button>
+
+</section>
+
+<!-- 3D MODEL VIEWER -->
+
+<section class="viewer-section glass">
+
+<h2>3D Viewer</h2>
+
+<div id="modelViewer">
+
+<p>3D model will load here</p>
+
+</div>
+
+</section>
+
+<!-- AI INFO PANEL -->
+
+<section class="info-section glass">
+
+<h2>AI Explanation</h2>
+
+<div id="aiInfo">
+
+<p>Object information will appear here</p>
+
+</div>
+
+</section>
+
+<!-- SIMILAR OBJECTS -->
+
+<section class="gallery-section">
+
+<h2>Similar Objects</h2>
+
+<div id="gallery"></div>
+
+</section>
+
+<!-- FOOTER NAV -->
+
+<footer class="footer glass">
+
+<button class="nav-btn">📷</button>
+
+<button class="nav-btn">🧠</button>
+
+<button class="nav-btn">🎮</button>
+
+<button class="nav-btn">⚡</button>
+
+</footer>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+
+</html>
