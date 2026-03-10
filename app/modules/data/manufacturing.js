@@ -1,198 +1,210 @@
-// ================= IMPORT =================
+// ================= IMPORTS =================
 
 import { emit } from "../core/events.js"
 
 
 
-// ================= MANUFACTURING DATABASE =================
+// ================= DATABASE =================
 
-const manufacturingDB = {
+const MANUFACTURING_DB = {
 
-electronics:{
+bicycle:{
+industry:"Mechanical Manufacturing",
+
 steps:[
-"Raw material preparation (silicon, copper, plastic)",
-"Semiconductor fabrication",
-"Printed Circuit Board (PCB) production",
-"Component mounting using SMT machines",
-"Circuit testing and calibration",
-"Final assembly and casing"
+"Frame tube cutting",
+"Frame welding",
+"Surface finishing",
+"Wheel assembly",
+"Gear installation",
+"Brake system installation",
+"Final quality inspection"
 ],
-tools:[
-"Pick and place machines",
-"Reflow ovens",
-"Testing rigs"
-],
-time:"Several hours to several days",
-industry:"Electronics manufacturing industry"
+
+materials:["steel tubes","rubber tires","aluminum rims"],
+
+tools:["welding machine","assembly tools","inspection tools"]
+
 },
 
-mechanical:{
+headphones:{
+industry:"Electronics Manufacturing",
+
 steps:[
-"Metal extraction and refining",
-"Casting or forging of base components",
-"Precision machining",
-"Surface finishing and heat treatment",
-"Assembly of mechanical parts",
-"Quality inspection"
+"Plastic shell molding",
+"Driver unit assembly",
+"Circuit board installation",
+"Ear cushion attachment",
+"Acoustic tuning",
+"Final audio testing"
 ],
-tools:[
-"CNC machines",
-"Metal lathes",
-"Milling machines"
-],
-time:"Hours to weeks depending on complexity",
-industry:"Mechanical engineering industry"
+
+materials:["plastic shell","audio drivers","foam cushions"],
+
+tools:["precision assembly tools","audio calibration systems"]
+
 },
 
-furniture:{
+phone:{
+industry:"Electronics Manufacturing",
+
 steps:[
-"Raw wood harvesting",
-"Wood drying and conditioning",
-"Cutting and shaping components",
-"Surface finishing and polishing",
-"Assembly using adhesives or fasteners",
-"Quality inspection"
+"Chip fabrication",
+"Motherboard assembly",
+"Display module integration",
+"Battery installation",
+"Camera module assembly",
+"Software flashing",
+"Quality testing"
 ],
-tools:[
-"Saws",
-"CNC wood cutters",
-"Sanding machines"
-],
-time:"Several hours to days",
-industry:"Furniture manufacturing industry"
+
+materials:["silicon chips","glass display","lithium battery"],
+
+tools:["clean room equipment","robotic assembly lines"]
+
 },
 
-plastic:{
+chair:{
+industry:"Furniture Manufacturing",
+
 steps:[
-"Polymer preparation",
-"Melting and injection molding",
-"Mold cooling and shaping",
-"Trimming and finishing",
+"Wood cutting",
+"Frame assembly",
+"Sanding and finishing",
+"Seat attachment",
 "Quality inspection"
 ],
-tools:[
-"Injection molding machines",
-"Plastic extrusion machines"
-],
-time:"Minutes to hours",
-industry:"Plastic manufacturing industry"
+
+materials:["wood panels","metal screws","fabric upholstery"],
+
+tools:["cutting machines","drills","finishing tools"]
+
+}
+
+}
+
+
+
+// ================= MAIN FUNCTION =================
+
+export async function getManufacturingInfo(objectName){
+
+try{
+
+emit("manufacturing:search:start", objectName)
+
+const key = objectName?.toLowerCase()
+
+let info = MANUFACTURING_DB[key]
+
+if(!info){
+
+info = generateGenericManufacturing(objectName)
+
+}
+
+emit("manufacturing:search:complete", info)
+
+return info
+
+}catch(err){
+
+console.error("Manufacturing lookup failed", err)
+
+emit("manufacturing:error")
+
+return null
+
 }
 
 }
 
 
 
-// ================= GET MANUFACTURING PROCESS =================
+// ================= GENERIC PROCESS =================
 
-export function getManufacturingProcess(category){
-
-emit("manufacturing:fetch",category)
-
-return manufacturingDB[category] || null
-
-}
-
-
-
-// ================= MANUFACTURING ANALYSIS =================
-
-export function analyzeManufacturing(object){
-
-emit("manufacturing:analyze:start")
-
-const category = object.category?.toLowerCase()
-
-let process = manufacturingDB[category]
-
-if(!process){
-
-process = manufacturingDB["plastic"]
-
-}
-
-emit("manufacturing:analyze:complete",process)
-
-return process
-
-}
-
-
-
-// ================= STEP EXPLANATION =================
-
-export function explainManufacturingSteps(category){
-
-const process = manufacturingDB[category]
-
-if(!process){
-
-return []
-
-}
-
-return process.steps.map((step,index)=>{
+function generateGenericManufacturing(objectName){
 
 return {
 
-step:index+1,
-description:step
+industry:"General Manufacturing",
+
+steps:[
+"Raw material preparation",
+"Component fabrication",
+"Assembly process",
+"Finishing operations",
+"Quality inspection"
+],
+
+materials:[`materials used in ${objectName}`],
+
+tools:["industrial machines","assembly tools"]
 
 }
-
-})
-
-}
-
-
-
-// ================= TOOL LIST =================
-
-export function getManufacturingTools(category){
-
-const process = manufacturingDB[category]
-
-if(!process){
-
-return []
-
-}
-
-return process.tools
 
 }
 
 
 
-// ================= PROCESS TIMELINE =================
+// ================= PROCESS SUMMARY =================
 
-export function manufacturingTimeline(category){
+export function summarizeManufacturing(process){
 
-const process = manufacturingDB[category]
+if(!process) return null
 
-if(!process){
+return {
 
-return "Unknown manufacturing duration"
+industry:process.industry,
 
-}
+stepCount:process.steps.length,
 
-return `Typical manufacturing time: ${process.time}`
-
-}
-
-
-
-// ================= INDUSTRY INFO =================
-
-export function manufacturingIndustry(category){
-
-const process = manufacturingDB[category]
-
-if(!process){
-
-return "General manufacturing sector"
+materialCount:process.materials.length
 
 }
 
-return process.industry
+}
+
+
+
+// ================= ESTIMATE COMPLEXITY =================
+
+export function estimateManufacturingComplexity(process){
+
+if(!process) return 0
+
+let score = process.steps.length * 10
+
+if(process.industry.includes("Electronics")) score += 30
+if(process.industry.includes("Mechanical")) score += 20
+
+return Math.min(score,100)
+
+}
+
+
+
+// ================= PROCESS VISUALIZATION =================
+
+export function buildProcessTimeline(process){
+
+if(!process) return []
+
+return process.steps.map((step,index)=>({
+
+stage:index+1,
+name:step
+
+}))
+
+}
+
+
+
+// ================= TOOL ANALYSIS =================
+
+export function listManufacturingTools(process){
+
+return process?.tools || []
 
 }
