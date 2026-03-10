@@ -1,202 +1,168 @@
 // ================= IMPORTS =================
 
-import { logAI } from "../utils/AILogger.js"
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
-import { narrate } from "../voice/narration.js"
 import { emit } from "../core/events.js"
+import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
 
 
-// ================= MAIN EXPLANATION =================
 
-export async function explainObject(objectInfo){
+// ================= EXPLAIN OBJECT =================
 
-logAI("AI explanation pipeline started")
+export async function explainObject(objectData){
 
-emit("ai:explain-start", objectInfo)
+emit("ai:explain:start")
 
-const knowledge = await aggregateKnowledge(objectInfo)
+try{
 
-const explanation = buildExplanation(objectInfo, knowledge)
+const knowledge = await aggregateKnowledge(objectData)
 
-emit("ai:explain-complete", explanation)
+const explanation = generateExplanation(objectData, knowledge)
+
+emit("ai:explain:complete", explanation)
 
 return explanation
+
+}catch(err){
+
+console.error("AI explanation failed", err)
+
+emit("ai:explain:error")
+
+return fallbackExplanation(objectData)
+
+}
 
 }
 
 
-// ================= BUILD EXPLANATION =================
 
-function buildExplanation(objectInfo, knowledge){
+// ================= GENERATE EXPLANATION =================
 
-const explanation = {
+function generateExplanation(object, knowledge){
 
-title: objectInfo.name,
+return {
 
-category: objectInfo.category || "Unknown",
+title: object.name,
 
-brand: objectInfo.brand || null,
-
-confidence: objectInfo.confidence || 0,
-
-summary: generateSummary(objectInfo, knowledge),
-
-history: knowledge.history || [],
+overview: generateOverview(object),
 
 materials: knowledge.materials || [],
 
-manufacturing: knowledge.manufacturing || [],
+manufacturing: knowledge.manufacturing || "Unknown",
 
-futureIdeas: knowledge.futureIdeas || [],
+history: knowledge.history || "No history data",
 
-images: knowledge.images || [],
+uses: knowledge.uses || [],
 
-similarObjects: knowledge.similarObjects || []
+future: predictFuture(object),
 
-}
-
-return explanation
+confidence: object.confidence || 0.5
 
 }
-
-
-// ================= SUMMARY GENERATOR =================
-
-function generateSummary(objectInfo, knowledge){
-
-let text = ""
-
-text += `${objectInfo.name} is generally categorized under ${objectInfo.category}. `
-
-if(objectInfo.brand){
-
-text += `This object appears to be associated with the brand ${objectInfo.brand}. `
-
-}
-
-if(knowledge.description){
-
-text += knowledge.description
-
-}
-
-if(knowledge.primaryUse){
-
-text += ` It is mainly used for ${knowledge.primaryUse}.`
-
-}
-
-return text
 
 }
 
 
-// ================= INTERACTIVE Q&A =================
 
-export function answerObjectQuestion(question, explanation){
+// ================= OVERVIEW =================
 
-question = question.toLowerCase()
+function generateOverview(object){
 
-if(question.includes("material")){
-
-return `This object is usually made from ${explanation.materials.join(", ")}.`
-
-}
-
-if(question.includes("history")){
-
-return explanation.history.join(" ")
-
-}
-
-if(question.includes("future")){
-
-return explanation.futureIdeas.join(" ")
-
-}
-
-if(question.includes("use")){
-
-return explanation.summary
-
-}
-
-return "This object is part of a broader category. You can explore more details in the information panel."
+return `The scanned object appears to be ${object.name}. 
+This object is commonly categorized under ${object.category}. 
+Based on visual analysis, the system estimates a confidence level of 
+${Math.round(object.confidence*100)} percent.`
 
 }
 
 
-// ================= VOICE EXPLANATION =================
 
-export function speakExplanation(explanation){
+// ================= FUTURE PREDICTION =================
 
-const voiceText = `
-${explanation.title}.
-${explanation.summary}.
-Main materials include ${explanation.materials.join(", ")}.
-`
+function predictFuture(object){
 
-narrate(voiceText)
+const category = object.category?.toLowerCase()
+
+if(category === "electronics"){
+
+return "Future versions may integrate smarter AI and improved energy efficiency."
+
+}
+
+if(category === "mechanical"){
+
+return "Future designs may include lighter alloys and higher durability."
+
+}
+
+return "Future developments may improve efficiency and automation."
 
 }
 
 
-// ================= EXPLANATION CARD FORMAT =================
 
-export function formatExplanationCard(explanation){
+// ================= CHAT STYLE ANSWER =================
 
-return{
+export function answerQuestion(question, objectData){
 
-header:{
+const q = question.toLowerCase()
 
-title: explanation.title,
-category: explanation.category,
-confidence: Math.round(explanation.confidence*100)+"%"
+if(q.includes("material")){
 
-},
-
-sections:[
-
-{
-
-title:"Overview",
-content: explanation.summary
-
-},
-
-{
-
-title:"History",
-content: explanation.history
-
-},
-
-{
-
-title:"Materials",
-content: explanation.materials
-
-},
-
-{
-
-title:"Manufacturing",
-content: explanation.manufacturing
-
-},
-
-{
-
-title:"Future Innovations",
-content: explanation.futureIdeas
+return `The object is likely made from materials such as ${objectData.materials?.join(", ") || "various industrial materials"}.`
 
 }
 
-],
+if(q.includes("use")){
 
-images: explanation.images,
+return `The primary uses of this object include ${objectData.uses?.join(", ") || "general functional purposes"}.`
 
-similarObjects: explanation.similarObjects
+}
+
+if(q.includes("history")){
+
+return objectData.history || "Historical information is limited."
+
+}
+
+return "The AI system is analyzing the object and generating insights."
+
+}
+
+
+
+// ================= STORY MODE =================
+
+export function generateStory(object){
+
+return `Imagine holding a ${object.name}. 
+This object was designed to solve practical problems in the ${object.category} field. 
+Over time, innovations improved its durability and functionality, making it a key component in modern technology.`
+
+}
+
+
+
+// ================= FALLBACK =================
+
+function fallbackExplanation(object){
+
+return {
+
+title: object.name || "Unknown Object",
+
+overview: "The AI system could not generate a full explanation, but the object appears to be a physical device detected by the visual system.",
+
+materials: [],
+
+manufacturing: "Unknown",
+
+history: "Unknown",
+
+uses: [],
+
+future: "Further analysis required",
+
+confidence: object.confidence || 0
 
 }
 
