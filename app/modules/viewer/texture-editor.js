@@ -1,226 +1,255 @@
-// ================= IMPORTS =================
+// ================= IMPORT =================
 
-import * as THREE from "/assets/libs/three.js"
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+import { on, emit } from "../core/events.js"
+import { getCurrentModel } from "./viewer.js"
+import { playTextureSound } from "../audio/editor-sounds.js"
 
-let currentModel = null
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
+
+
+
+// ================= GLOBAL =================
+
 let currentMaterial = null
+let textureCanvas
+let ctx
+let texture
+
 
 
 // ================= INIT =================
 
-export function initTextureEditor(model){
+export function initTextureEditor(){
 
-currentModel = model
+textureCanvas = document.getElementById("texture-canvas")
 
-logAI("Texture editor initialized")
+if(textureCanvas){
+
+ctx = textureCanvas.getContext("2d")
+
+textureCanvas.width = 1024
+textureCanvas.height = 1024
+
+texture = new THREE.CanvasTexture(textureCanvas)
+
+}
+
+listenTextureEvents()
 
 }
 
 
-// ================= APPLY BASIC COLOR =================
 
-export function applyColor(color){
+// ================= EVENTS =================
 
-if(!currentModel) return
+function listenTextureEvents(){
 
-currentModel.traverse((child)=>{
+on("texture:apply-color", applyColor)
 
-if(child.isMesh){
+on("texture:apply-style", applyStyle)
 
-child.material.color = new THREE.Color(color)
-
-child.material.needsUpdate = true
-
-}
-
-})
-
-emit("texture:color-applied", color)
+on("texture:reset", resetTexture)
 
 }
 
 
-// ================= APPLY IMAGE TEXTURE =================
 
-export function applyTexture(imageURL){
+// ================= GET TARGET =================
 
-if(!currentModel) return
+function getTargetMesh(){
 
-const loader = new THREE.TextureLoader()
+const model = getCurrentModel()
 
-loader.load(imageURL,(texture)=>{
+if(!model) return null
 
-currentModel.traverse((child)=>{
+let mesh = null
 
-if(child.isMesh){
+model.traverse(obj => {
 
-child.material.map = texture
-child.material.needsUpdate = true
+if(obj.isMesh && !mesh){
 
-}
-
-})
-
-emit("texture:image-applied", imageURL)
-
-})
-
-}
-
-
-// ================= MATERIAL PRESETS =================
-
-export function applyMaterialPreset(type){
-
-if(!currentModel) return
-
-currentModel.traverse((child)=>{
-
-if(!child.isMesh) return
-
-if(type === "metal"){
-
-child.material.metalness = 1
-child.material.roughness = 0.2
-
-}
-
-if(type === "plastic"){
-
-child.material.metalness = 0.2
-child.material.roughness = 0.7
-
-}
-
-if(type === "wood"){
-
-child.material.metalness = 0.1
-child.material.roughness = 0.9
-
-}
-
-child.material.needsUpdate = true
-
-})
-
-emit("texture:preset", type)
-
-}
-
-
-// ================= PATTERN TEXTURE =================
-
-export function applyPattern(patternURL){
-
-const loader = new THREE.TextureLoader()
-
-loader.load(patternURL,(texture)=>{
-
-texture.wrapS = THREE.RepeatWrapping
-texture.wrapT = THREE.RepeatWrapping
-
-texture.repeat.set(4,4)
-
-currentModel.traverse((child)=>{
-
-if(child.isMesh){
-
-child.material.map = texture
-child.material.needsUpdate = true
+mesh = obj
 
 }
 
 })
 
-emit("texture:pattern")
+return mesh
+
+}
+
+
+
+// ================= APPLY COLOR =================
+
+function applyColor(color){
+
+const mesh = getTargetMesh()
+
+if(!mesh) return
+
+if(!mesh.material) return
+
+mesh.material.color = new THREE.Color(color)
+
+mesh.material.needsUpdate = true
+
+playTextureSound()
+
+emit("texture:updated")
+
+}
+
+
+
+// ================= APPLY STYLE =================
+
+function applyStyle(style){
+
+const mesh = getTargetMesh()
+
+if(!mesh) return
+
+switch(style){
+
+case "gold":
+
+applyMaterial(mesh,{
+color:"#d4af37",
+metalness:1,
+roughness:0.2
+})
+
+break
+
+case "metal":
+
+applyMaterial(mesh,{
+color:"#888888",
+metalness:0.9,
+roughness:0.4
+})
+
+break
+
+case "plastic":
+
+applyMaterial(mesh,{
+color:"#ffffff",
+metalness:0.1,
+roughness:0.8
+})
+
+break
+
+case "glass":
+
+applyMaterial(mesh,{
+color:"#a0d8ff",
+metalness:0,
+roughness:0,
+transparent:true,
+opacity:0.5
+})
+
+break
+
+case "wood":
+
+generateWoodTexture(mesh)
+
+break
+
+}
+
+emit("texture:updated")
+
+playTextureSound()
+
+}
+
+
+
+// ================= APPLY MATERIAL =================
+
+function applyMaterial(mesh,props){
+
+mesh.material = new THREE.MeshStandardMaterial({
+
+color: props.color || "#ffffff",
+metalness: props.metalness || 0,
+roughness: props.roughness || 1,
+transparent: props.transparent || false,
+opacity: props.opacity || 1
 
 })
 
+mesh.material.needsUpdate = true
+
+}
+
+
+
+// ================= WOOD TEXTURE =================
+
+function generateWoodTexture(mesh){
+
+ctx.fillStyle = "#8b5a2b"
+
+ctx.fillRect(0,0,textureCanvas.width,textureCanvas.height)
+
+for(let i=0;i<200;i++){
+
+ctx.strokeStyle = "rgba(0,0,0,0.05)"
+
+ctx.beginPath()
+
+ctx.moveTo(Math.random()*1024,0)
+
+ctx.lineTo(Math.random()*1024,1024)
+
+ctx.stroke()
+
+}
+
+texture.needsUpdate = true
+
+mesh.material.map = texture
+
+mesh.material.needsUpdate = true
+
 }
 
 
-// ================= REMOVE TEXTURE =================
 
-export function removeTexture(){
+// ================= RESET =================
 
-currentModel.traverse((child)=>{
+function resetTexture(){
 
-if(child.isMesh){
+const mesh = getTargetMesh()
 
-child.material.map = null
-child.material.needsUpdate = true
+if(!mesh) return
 
-}
+mesh.material = new THREE.MeshStandardMaterial({
+
+color:"#ffffff"
 
 })
 
-emit("texture:removed")
+mesh.material.needsUpdate = true
+
+emit("texture:reset")
 
 }
 
 
-// ================= TEXTURE ROTATION =================
 
-export function rotateTexture(angle){
+// ================= EXPORT TEXTURE =================
 
-currentModel.traverse((child)=>{
+export function exportTexture(){
 
-if(child.isMesh && child.material.map){
+if(!textureCanvas) return null
 
-child.material.map.rotation = angle
-child.material.map.needsUpdate = true
-
-}
-
-})
-
-emit("texture:rotated", angle)
-
-}
-
-
-// ================= TEXTURE SCALE =================
-
-export function scaleTexture(scale){
-
-currentModel.traverse((child)=>{
-
-if(child.isMesh && child.material.map){
-
-child.material.map.repeat.set(scale,scale)
-child.material.map.needsUpdate = true
-
-}
-
-})
-
-emit("texture:scaled", scale)
-
-}
-
-
-// ================= EXPORT MODEL =================
-
-export function exportModel(){
-
-if(!currentModel) return null
-
-const exporter = new THREE.GLTFExporter()
-
-exporter.parse(
-
-currentModel,
-
-(result)=>{
-
-emit("texture:model-export", result)
-
-},
-
-{binary:true}
-
-)
+return textureCanvas.toDataURL("image/png")
 
 }
