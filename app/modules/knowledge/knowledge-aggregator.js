@@ -1,244 +1,193 @@
 // ================= IMPORTS =================
 
-import { logAI } from "../utils/AILogger.js"
-
-const WIKI_API =
-"https://en.wikipedia.org/api/rest_v1/page/summary/"
-
-const IMAGE_API =
-"https://api.unsplash.com/search/photos?per_page=5&query="
-
-const UNSPLASH_KEY = ""
+import { emit } from "../core/events.js"
 
 
-// ================= MAIN AGGREGATOR =================
 
-export async function aggregateKnowledge(objectInfo){
+// ================= KNOWLEDGE SOURCES =================
 
-logAI("Knowledge aggregation started")
+const localKnowledge = {
 
-const name = objectInfo.name
+materials:{
+electronics:["plastic","copper","silicon","aluminum"],
+mechanical:["steel","iron","alloy"],
+furniture:["wood","metal","plastic"]
+},
 
-const [
+uses:{
+electronics:["signal processing","audio playback","communication"],
+mechanical:["power transfer","motion control"],
+furniture:["support","sitting","storage"]
+},
 
-wikiData,
-imageData,
-materialData,
-manufacturingData,
-futureIdeas
+manufacturing:{
+electronics:"PCB fabrication and electronic assembly",
+mechanical:"industrial machining and metal forming",
+furniture:"cutting, shaping and structural assembly"
+}
 
-] = await Promise.all([
+}
 
-fetchWikipedia(name),
-fetchImages(name),
-estimateMaterials(objectInfo),
-estimateManufacturing(objectInfo),
-predictFutureIdeas(objectInfo)
+
+
+// ================= AGGREGATE KNOWLEDGE =================
+
+export async function aggregateKnowledge(object){
+
+emit("knowledge:start")
+
+try{
+
+const sources = await Promise.all([
+
+getLocalKnowledge(object),
+fetchWikipediaData(object.name),
+generateAIInsights(object)
 
 ])
 
-return{
+const merged = mergeKnowledge(sources)
 
-description: wikiData.description,
-history: wikiData.history,
+emit("knowledge:complete",merged)
 
-images: imageData,
+return merged
 
-materials: materialData,
+}catch(err){
 
-manufacturing: manufacturingData,
+console.error("Knowledge aggregation failed",err)
 
-futureIdeas: futureIdeas,
+emit("knowledge:error")
 
-similarObjects: wikiData.similar
+return getLocalKnowledge(object)
+
+}
+
+}
+
+
+
+// ================= LOCAL KNOWLEDGE =================
+
+function getLocalKnowledge(object){
+
+const category = object.category || "general"
+
+return {
+
+materials: localKnowledge.materials[category] || [],
+
+uses: localKnowledge.uses[category] || [],
+
+manufacturing: localKnowledge.manufacturing[category] || "Industrial fabrication"
 
 }
 
 }
+
 
 
 // ================= WIKIPEDIA FETCH =================
 
-async function fetchWikipedia(name){
+async function fetchWikipediaData(name){
 
 try{
 
-const res = await fetch(WIKI_API + encodeURIComponent(name))
+const url =
+`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`
 
-const data = await res.json()
+const response = await fetch(url)
 
-return{
+if(!response.ok){
 
-description: data.extract || "",
-history: extractHistory(data.extract),
-similar: extractSimilar(data.extract)
-
-}
-
-}catch(e){
-
-return{
-
-description:"",
-history:[],
-similar:[]
+throw new Error("Wiki fetch failed")
 
 }
 
-}
+const data = await response.json()
+
+return {
+
+history: data.extract || null,
+
+thumbnail: data.thumbnail?.source || null
 
 }
 
+}catch(err){
 
-// ================= IMAGE SEARCH =================
+return {
 
-async function fetchImages(name){
+history:null,
+thumbnail:null
 
-if(!UNSPLASH_KEY) return []
-
-try{
-
-const res = await fetch(
-IMAGE_API + encodeURIComponent(name) +
-"&client_id=" + UNSPLASH_KEY
-)
-
-const data = await res.json()
-
-return data.results.map(img=>img.urls.small)
-
-}catch(e){
-
-return[]
+}
 
 }
 
 }
 
 
-// ================= MATERIAL ESTIMATION =================
 
-function estimateMaterials(objectInfo){
+// ================= AI INSIGHTS =================
 
-const name = objectInfo.name.toLowerCase()
+async function generateAIInsights(object){
 
-if(name.includes("bottle")){
+return {
 
-return ["plastic","glass","metal cap"]
+future: predictFuture(object),
 
-}
-
-if(name.includes("phone")){
-
-return ["aluminium","glass","silicon chip"]
+category: object.category || "general"
 
 }
-
-if(name.includes("chair")){
-
-return ["wood","plastic","steel"]
-
-}
-
-return ["metal","plastic","composite materials"]
 
 }
 
 
-// ================= MANUFACTURING PROCESS =================
 
-function estimateManufacturing(objectInfo){
+// ================= FUTURE PREDICTION =================
 
-const name = objectInfo.name.toLowerCase()
+function predictFuture(object){
 
-if(name.includes("bottle")){
+const cat = object.category?.toLowerCase()
 
-return[
-"plastic molding",
-"cooling process",
-"label printing",
-"packaging"
-]
+if(cat === "electronics"){
+
+return "Future versions may integrate AI chips and improved power efficiency."
 
 }
 
-if(name.includes("phone")){
+if(cat === "mechanical"){
 
-return[
-"chip fabrication",
-"screen assembly",
-"battery integration",
-"final device assembly"
-]
+return "Future designs may include lighter alloys and automated manufacturing."
 
 }
 
-return[
-"raw material preparation",
-"component shaping",
-"assembly",
-"quality inspection"
-]
+return "Future developments may improve efficiency and durability."
 
 }
 
 
-// ================= FUTURE IDEAS =================
 
-function predictFutureIdeas(objectInfo){
+// ================= MERGE KNOWLEDGE =================
 
-const name = objectInfo.name.toLowerCase()
+function mergeKnowledge(sources){
 
-if(name.includes("bicycle")){
+const result = {}
 
-return[
-"AI assisted bicycles",
-"self balancing bikes",
-"solar powered electric bikes"
-]
+sources.forEach(source=>{
 
-}
+Object.keys(source).forEach(key=>{
 
-if(name.includes("phone")){
+if(!result[key]){
 
-return[
-"transparent smartphones",
-"holographic displays",
-"AI integrated assistants"
-]
+result[key] = source[key]
 
 }
 
-return[
-"eco friendly materials",
-"smart sensors integration",
-"AI assisted automation"
-]
+})
 
-}
+})
 
-
-// ================= HISTORY EXTRACTOR =================
-
-function extractHistory(text){
-
-if(!text) return []
-
-const sentences = text.split(". ")
-
-return sentences.slice(0,3)
-
-}
-
-
-// ================= SIMILAR OBJECTS =================
-
-function extractSimilar(text){
-
-if(!text) return []
-
-const words = text.split(" ")
-
-return words.slice(0,5)
+return result
 
 }
