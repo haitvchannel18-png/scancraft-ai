@@ -1,71 +1,26 @@
-
 // ================= IMPORTS =================
 
-import { logAI } from "../utils/AILogger.js"
-
-let databaseVectors = []
-let databaseObjects = []
-
-const DB_PATH = "/models/embeddings/object-db.json"
-
-const MAX_RESULTS = 5
+import { emit } from "../core/events.js"
+import { getVectorDatabase } from "./embeddings-index.js"
 
 
-// ================= LOAD DATABASE =================
 
-export async function loadObjectDatabase(){
+// ================= CONFIG =================
 
-if(databaseVectors.length) return
-
-logAI("Loading object embedding database")
-
-const response = await fetch(DB_PATH)
-
-const data = await response.json()
-
-databaseObjects = data.objects
-databaseVectors = data.vectors
-
-logAI("Embedding database loaded")
-
-}
+const TOP_K = 8
+const CONF_THRESHOLD = 0.32
 
 
-// ================= MAIN SEARCH =================
 
-export async function findSimilarObjects(queryVector, topK = MAX_RESULTS){
+// ================= CACHE =================
 
-if(!databaseVectors.length){
+const similarityCache = new Map()
 
-await loadObjectDatabase()
-
-}
-
-const scores = []
-
-for(let i=0;i<databaseVectors.length;i++){
-
-const sim = cosineSimilarity(queryVector, databaseVectors[i])
-
-scores.push({
-
-object: databaseObjects[i],
-score: sim
-
-})
-
-}
-
-scores.sort((a,b)=>b.score-a.score)
-
-return scores.slice(0, topK)
-
-}
 
 
 // ================= COSINE SIMILARITY =================
 
-function cosineSimilarity(a,b){
+function cosineSimilarity(a, b){
 
 let dot = 0
 let normA = 0
@@ -73,112 +28,192 @@ let normB = 0
 
 for(let i=0;i<a.length;i++){
 
-dot += a[i] * b[i]
-normA += a[i] * a[i]
-normB += b[i] * b[i]
+dot += a[i]*b[i]
+normA += a[i]*a[i]
+normB += b[i]*b[i]
 
 }
 
-return dot / (Math.sqrt(normA) * Math.sqrt(normB))
-
-}
-
-
-// ================= OBJECT GUESS =================
-
-export function guessObject(matches){
-
-if(!matches || matches.length === 0){
-
-return{
-
-name:"Unknown object",
-confidence:0
-
-}
-
-}
-
-const best = matches[0]
-
-if(best.score < 0.45){
-
-return{
-
-name:"Unknown object",
-confidence:best.score,
-suggestions:matches.map(m=>m.object.name)
-
-}
-
-}
-
-return{
-
-name:best.object.name,
-category:best.object.category,
-brand:best.object.brand || null,
-confidence:best.score,
-similar:matches.map(m=>m.object.name)
-
-}
+return dot / (Math.sqrt(normA)*Math.sqrt(normB))
 
 }
 
 
-// ================= CATEGORY RANKING =================
 
-export function rankCategories(matches){
+// ================= EUCLIDEAN DISTANCE =================
 
-const categoryScores = {}
+function euclideanDistance(a,b){
 
-matches.forEach(m=>{
+let sum = 0
 
-const cat = m.object.category || "unknown"
+for(let i=0;i<a.length;i++){
 
-if(!categoryScores[cat]){
-
-categoryScores[cat] = 0
+sum += (a[i]-b[i])*(a[i]-b[i])
 
 }
 
-categoryScores[cat] += m.score
+return Math.sqrt(sum)
+
+}
+
+
+
+// ================= VECTOR SEARCH =================
+
+export async function similaritySearch(queryVector){
+
+emit("vision:similarity:start")
+
+const database = getVectorDatabase()
+
+const cacheKey = hashVector(queryVector)
+
+if(similarityCache.has(cacheKey)){
+
+return similarityCache.get(cacheKey)
+
+}
+
+const results = []
+
+for(const item of database){
+
+const score = cosineSimilarity(
+queryVector,
+item.embedding
+)
+
+if(score > CONF_THRESHOLD){
+
+results.push({
+
+id:item.id,
+name:item.name,
+category:item.category,
+confidence:score,
+model:item.model || null,
+thumbnail:item.thumbnail || null
 
 })
 
-const sorted = Object.entries(categoryScores)
-.sort((a,b)=>b[1]-a[1])
+}
 
-return sorted.map(v=>v[0])
+}
+
+results.sort((a,b)=>b.confidence-a.confidence)
+
+const ranked = results.slice(0,TOP_K)
+
+similarityCache.set(cacheKey, ranked)
+
+emit("vision:similarity:complete", ranked)
+
+return ranked
 
 }
 
 
-// ================= BRAND DETECTION =================
 
-export function detectBrand(matches){
+// ================= MULTI OBJECT SEARCH =================
 
-const brands = {}
+export async function multiObjectSearch(vectors){
 
-matches.forEach(m=>{
+const aggregatedResults = []
 
-if(!m.object.brand) return
+for(const vector of vectors){
 
-if(!brands[m.object.brand]){
+const res = await similaritySearch(vector)
 
-brands[m.object.brand] = 0
+aggregatedResults.push(...res)
 
 }
 
-brands[m.object.brand] += m.score
+return rankResults(aggregatedResults)
+
+}
+
+
+
+// ================= RANK RESULTS =================
+
+export function rankResults(results){
+
+const map = {}
+
+results.forEach(r=>{
+
+if(!map[r.id]){
+
+map[r.id] = r
+
+}else{
+
+map[r.id].confidence =
+Math.max(map[r.id].confidence,r.confidence)
+
+}
 
 })
 
-const sorted = Object.entries(brands)
-.sort((a,b)=>b[1]-a[1])
+const merged = Object.values(map)
 
-if(sorted.length === 0) return null
+merged.sort((a,b)=>b.confidence-a.confidence)
 
-return sorted[0][0]
+return merged.slice(0,TOP_K)
+
+}
+
+
+
+// ================= CATEGORY FILTER =================
+
+export function filterByCategory(results, category){
+
+return results.filter(r => r.category === category)
+
+}
+
+
+
+// ================= HASH VECTOR =================
+
+function hashVector(vector){
+
+let hash = 0
+
+for(let i=0;i<vector.length;i++){
+
+hash = ((hash<<5)-hash) + Math.floor(vector[i]*1000)
+hash |= 0
+
+}
+
+return hash
+}
+
+
+
+// ================= CONFIDENCE LABEL =================
+
+export function confidenceLabel(score){
+
+if(score > 0.85) return "Very High Match"
+if(score > 0.70) return "High Match"
+if(score > 0.55) return "Probable Match"
+if(score > 0.40) return "Possible Match"
+
+return "Low Confidence"
+
+}
+
+
+
+// ================= CLEAR CACHE =================
+
+export function clearSimilarityCache(){
+
+similarityCache.clear()
+
+emit("vision:similarity:cache-cleared")
 
 }
