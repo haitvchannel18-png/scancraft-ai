@@ -1,219 +1,229 @@
 // ================= IMPORTS =================
 
+import { runVisionPipeline } from "../vision/vision-pipeline.js"
+import { runKnowledgeStage, getPrimaryKnowledge } from "../vision/knowledge-stage.js"
+
+import { speak } from "../voice/narration.js"
+
+import { searchAmazon } from "../commerce/amazon-search.js"
+import { searchFlipkart } from "../commerce/flipkart-search.js"
+import { compareProducts } from "../commerce/product-compare.js"
+
+import { renderObjectPanel } from "../ui/object-panel.js"
+import { renderCards } from "../ui/card-renderer.js"
+
 import { emit } from "../core/events.js"
-import { explainObject } from "./explain-ai.js"
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
 
 
 
-// ================= MEMORY =================
+// ================= MAIN ENTRY =================
 
-const objectMemory = new Map()
+export async function analyzeScene(frame){
 
+try{
 
+emit("brain:analysis:start")
 
-// ================= ACTIVE OBJECT =================
+// 1️⃣ vision pipeline
 
-let activeObject = null
+const visionResults = await runVisionPipeline(frame)
 
+if(!visionResults || visionResults.length === 0){
 
+emit("brain:no-object")
 
-// ================= SET ACTIVE OBJECT =================
-
-export function setActiveObject(object){
-
-activeObject = object
-
-if(!objectMemory.has(object.id)){
-
-objectMemory.set(object.id,{
-history:[],
-questions:[],
-insights:{}
-})
-
-}
-
-emit("object:active",object)
+return null
 
 }
 
 
+// 2️⃣ knowledge stage
 
-// ================= GET ACTIVE OBJECT =================
+const knowledgeResults = await runKnowledgeStage(visionResults)
 
-export function getActiveObject(){
+const primary = getPrimaryKnowledge(knowledgeResults)
 
-return activeObject
+if(!primary){
 
-}
+emit("brain:no-knowledge")
 
-
-
-// ================= OBJECT INSIGHTS =================
-
-export async function generateInsights(object){
-
-emit("object:insight:start")
-
-const knowledge = await aggregateKnowledge(object)
-
-const explanation = await explainObject(object)
-
-const insights = {
-
-overview: explanation.overview,
-
-materials: knowledge.materials || [],
-
-uses: knowledge.uses || [],
-
-manufacturing: knowledge.manufacturing || null,
-
-history: knowledge.history || null,
-
-future: explanation.future
+return null
 
 }
 
-const mem = objectMemory.get(object.id)
 
-mem.insights = insights
+// 3️⃣ render UI
 
-emit("object:insight:complete", insights)
+renderObjectPanel(primary)
 
-return insights
+renderCards(primary)
+
+
+// 4️⃣ voice explanation
+
+await speak(primary.description)
+
+
+// 5️⃣ commerce search
+
+loadCommerce(primary.name)
+
+emit("brain:analysis:complete")
+
+return primary
+
+}catch(err){
+
+console.error("Object brain error", err)
+
+emit("brain:error")
+
+return null
+
+}
 
 }
 
 
 
-// ================= ASK OBJECT =================
+// ================= COMMERCE =================
 
-export async function askObject(question){
+async function loadCommerce(objectName){
 
-if(!activeObject){
+try{
 
-return "No object selected."
+const amazon = await searchAmazon(objectName)
+
+const flipkart = await searchFlipkart(objectName)
+
+const products = compareProducts([...amazon,...flipkart])
+
+emit("commerce:results", products)
+
+}catch(err){
+
+console.warn("Commerce search failed")
 
 }
-
-const mem = objectMemory.get(activeObject.id)
-
-mem.questions.push(question)
-
-mem.history.push({
-
-role:"user",
-text:question
-})
-
-const response = await generateResponse(question, activeObject)
-
-mem.history.push({
-
-role:"ai",
-text:response
-
-})
-
-emit("object:chat:response",response)
-
-return response
 
 }
 
 
 
-// ================= RESPONSE ENGINE =================
+// ================= OBJECT CHAT =================
 
-async function generateResponse(question, object){
+export async function askObject(objectData, question){
 
-const q = question.toLowerCase()
+try{
 
-if(q.includes("material")){
+emit("brain:question:start")
 
-return `The object is likely made from ${object.materials?.join(", ") || "various industrial materials"}.`
+const context = buildContext(objectData)
 
-}
+const answer = await queryAI(context, question)
 
-if(q.includes("use")){
+emit("brain:question:answer", answer)
 
-return `The main purpose of this object is ${object.uses?.join(", ") || "functional usage in its category"}.`
+await speak(answer)
 
-}
+return answer
 
-if(q.includes("history")){
+}catch(err){
 
-return object.history || "Historical data for this object is limited."
+console.error("Object chat error")
 
-}
-
-if(q.includes("future")){
-
-return "Future versions of this object may include smarter materials and improved efficiency."
+return "Sorry, I could not answer that."
 
 }
-
-if(q.includes("how")){
-
-return "This object is typically manufactured using industrial fabrication techniques and assembly processes."
-
-}
-
-return await genericReasoning(question, object)
 
 }
 
 
 
-// ================= GENERIC REASONING =================
+// ================= CONTEXT BUILDER =================
 
-async function genericReasoning(question, object){
-
-const knowledge = await aggregateKnowledge(object)
-
-return `Based on visual analysis, the object appears to belong to the ${object.category} category. 
-Its common uses include ${knowledge.uses?.join(", ") || "various functional applications"}.`
-
-}
-
-
-
-// ================= OBJECT MEMORY =================
-
-export function getObjectMemory(objectId){
-
-return objectMemory.get(objectId)
-
-}
-
-
-
-// ================= CLEAR MEMORY =================
-
-export function clearObjectMemory(objectId){
-
-objectMemory.delete(objectId)
-
-emit("object:memory:cleared",objectId)
-
-}
-
-
-
-// ================= OBJECT PERSONALITY =================
-
-export function objectPersonality(object){
+function buildContext(object){
 
 return {
 
-tone:"informative",
+name: object.name,
 
-style:"friendly",
+category: object.category,
 
-description:`I am a ${object.name}, designed for ${object.category} applications.`
+purpose: object.purpose,
+
+materials: object.material,
+
+history: object.history
 
 }
+
+}
+
+
+
+// ================= AI QUERY =================
+
+async function queryAI(context, question){
+
+const prompt = `
+Object: ${context.name}
+Category: ${context.category}
+Purpose: ${context.purpose}
+Materials: ${context.materials}
+History: ${context.history}
+
+User Question: ${question}
+
+Answer clearly.
+`
+
+// future AI integration
+
+return "This object is commonly used for " + context.purpose
+
+}
+
+
+
+// ================= FUTURE IDEAS =================
+
+export function generateFutureIdeas(object){
+
+const ideas = []
+
+if(object.category === "vehicle"){
+
+ideas.push("AI self driving upgrade")
+
+ideas.push("electric powered version")
+
+}
+
+if(object.category === "furniture"){
+
+ideas.push("smart ergonomic design")
+
+ideas.push("adjustable AI posture support")
+
+}
+
+return ideas
+
+}
+
+
+
+// ================= DIY IDEAS =================
+
+export function generateDIY(object){
+
+const diy = []
+
+diy.push(`Repair guide for ${object.name}`)
+
+diy.push(`Creative reuse of ${object.name}`)
+
+return diy
 
 }
