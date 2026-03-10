@@ -4,57 +4,69 @@
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 
 <title>ScanCraft AI</title>
 
-<meta name="theme-color" content="#020617">
+<meta name="theme-color" content="#0f172a">
 
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="./manifest.json">
 
-<link rel="stylesheet" href="style.css">
-
-<script src="https://cdn.tailwindcss.com"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<link rel="stylesheet" href="./style.css">
 
 </head>
 
+
 <body>
 
-<div class="app">
+<div id="app">
 
-<header class="header glass">
+<!-- ================= HEADER ================= -->
 
-<h1 class="logo">ScanCraft AI</h1>
+<header id="topbar">
 
-<button class="icon-btn">⚙</button>
+<div class="logo">
+ScanCraft AI
+</div>
+
+<div class="top-actions">
+
+<button id="voiceToggle">🎤</button>
+
+<button id="settingsBtn">⚙</button>
+
+</div>
 
 </header>
 
-<section class="camera-section">
 
-<div class="camera-box glass">
+<!-- ================= CAMERA SCAN AREA ================= -->
+
+<section id="scan-area">
+
+<div id="camera-container">
 
 <video id="camera" autoplay playsinline></video>
 
 <canvas id="overlay"></canvas>
 
+<div id="scan-overlay">
+
+<div class="scan-grid"></div>
+
+<div id="scan-status">
+Scanning environment...
 </div>
 
-<div class="scan-area">
+</div>
 
-<button id="scanBtn" class="scan-btn">
+</div>
 
-SCAN OBJECT
+<div id="scan-controls">
+
+<button id="scanBtn" class="primary-btn">
+
+<span>Scan Object</span>
 
 </button>
 
@@ -62,63 +74,152 @@ SCAN OBJECT
 
 </section>
 
-<section class="feature-grid">
 
-<button id="voiceBtn" class="feature-btn">🎤 Voice AI</button>
+<!-- ================= OBJECT RESULT PANEL ================= -->
 
-<button class="feature-btn">📦 3D Model</button>
+<section id="result-panel" class="hidden">
 
-<button class="feature-btn">🎨 Paint</button>
+<div id="object-card">
 
-<button class="feature-btn">📖 Info</button>
+<div class="object-image">
 
-<button class="feature-btn">🖼 Gallery</button>
-
-<button class="feature-btn">📤 Share</button>
-
-</section>
-
-<section class="viewer-section glass">
-
-<h2>3D Viewer</h2>
-
-<div id="modelViewer"></div>
-
-</section>
-
-<section class="info-section glass">
-
-<h2>AI Explanation</h2>
-
-<div id="aiInfo"></div>
-
-</section>
-
-<footer class="footer glass">
-
-<button class="nav-btn">📷</button>
-
-<button class="nav-btn">🧠</button>
-
-<button class="nav-btn">🎮</button>
-
-<button class="nav-btn">⚡</button>
-
-</footer>
+<img id="objectPreview">
 
 </div>
 
-<script src="app.js"></script>
+<div class="object-info">
+
+<h2 id="objectName"></h2>
+
+<p id="objectConfidence"></p>
+
+</div>
+
+</div>
+
+
+<div id="result-tabs">
+
+<button data-tab="ai">AI Explain</button>
+
+<button data-tab="similar">Similar</button>
+
+<button data-tab="history">History</button>
+
+<button data-tab="buy">Buy</button>
+
+<button data-tab="edit">Edit</button>
+
+</div>
+
+
+<div id="result-content">
+
+<div id="ai-panel" class="result-tab">
+
+<div id="ai-chat"></div>
+
+<div id="ai-input">
+
+<input id="aiQuestion" placeholder="Ask AI about this object">
+
+<button id="askBtn">Ask</button>
+
+</div>
+
+</div>
+
+
+<div id="similar-panel" class="result-tab hidden">
+
+<div id="similarGallery"></div>
+
+</div>
+
+
+<div id="history-panel" class="result-tab hidden">
+
+<div id="historyContent"></div>
+
+</div>
+
+
+<div id="buy-panel" class="result-tab hidden">
+
+<div id="priceList"></div>
+
+</div>
+
+
+<div id="edit-panel" class="result-tab hidden">
+
+<div id="viewerContainer">
+
+<canvas id="viewerCanvas"></canvas>
+
+</div>
+
+<div id="editor-tools"></div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<!-- ================= VOICE INTERACTION ================= -->
+
+<div id="voice-ui" class="hidden">
+
+<div id="voice-bubble">
+
+<div class="wave"></div>
+<div class="wave"></div>
+<div class="wave"></div>
+
+</div>
+
+<div id="voice-status">
+
+Listening...
+
+</div>
+
+</div>
+
+
+<!-- ================= LOADING SCREEN ================= -->
+
+<div id="loading-screen">
+
+<div class="loader">
+
+<div class="loader-ring"></div>
+
+<p>Initializing AI Engine...</p>
+
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ================= SERVICE WORKER ================= -->
 
 <script>
 
 if ("serviceWorker" in navigator) {
-
-navigator.serviceWorker.register("service-worker.js");
-
+navigator.serviceWorker.register("./service-worker.js")
 }
 
 </script>
+
+
+<!-- ================= APP BOOT ================= -->
+
+<script type="module" src="./app.js"></script>
 
 </body>
 
