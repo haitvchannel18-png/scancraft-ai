@@ -1,7 +1,7 @@
 // ================= IMPORTS =================
 
 import { emit } from "../core/events.js"
-import { logAI } from "../utils/ai-logger.js"
+import { getCachedModel, cacheModel } from "../core/performance.js"
 
 let session = null
 
@@ -9,31 +9,46 @@ const MODEL_PATH = "/models/detection/yolov8n.onnx"
 
 const INPUT_SIZE = 640
 
+const CONFIDENCE_THRESHOLD = 0.35
+const NMS_THRESHOLD = 0.45
+
+
 
 // ================= LOAD MODEL =================
 
 export async function loadYOLO(){
 
-if(session) return session
+const cached = getCachedModel("yolo")
 
-logAI("Loading YOLO model")
+if(cached){
 
-session = await ort.InferenceSession.create(MODEL_PATH,{
+session = cached
+return session
 
+}
+
+emit("ai:model-loading","YOLO")
+
+session = await ort.InferenceSession.create(
+MODEL_PATH,
+{
 executionProviders:["webgl","wasm"]
+}
+)
 
-})
+cacheModel("yolo",session)
 
-logAI("YOLO model loaded")
+emit("ai:model-ready","YOLO")
 
 return session
 
 }
 
 
+
 // ================= DETECT OBJECTS =================
 
-export async function detectObjects(frame){
+export async function detectObjects(imageData){
 
 if(!session){
 
@@ -41,127 +56,123 @@ await loadYOLO()
 
 }
 
-emit("vision:detecting")
+const tensor = preprocess(imageData)
 
-const {inputTensor,scaleX,scaleY} = preprocess(frame)
-
-const feeds = {
-
-images: inputTensor
-
-}
+const feeds = { images:tensor }
 
 const results = await session.run(feeds)
 
-const detections = postprocess(results,scaleX,scaleY)
+const output = results.output0.data
 
-emit("vision:detections",detections)
+const detections = postprocess(output,imageData.width,imageData.height)
+
+emit("ai:detection",detections)
 
 return detections
 
 }
 
 
+
 // ================= PREPROCESS =================
 
-function preprocess(frame){
+function preprocess(image){
 
-const data = frame.data
+const canvas = document.createElement("canvas")
 
-const width = frame.width
+canvas.width = INPUT_SIZE
+canvas.height = INPUT_SIZE
 
-const height = frame.height
+const ctx = canvas.getContext("2d")
 
-const scaleX = width / INPUT_SIZE
+const temp = document.createElement("canvas")
 
-const scaleY = height / INPUT_SIZE
+temp.width = image.width
+temp.height = image.height
 
-const tensor = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
+temp.getContext("2d").putImageData(image,0,0)
 
-for(let y=0;y<INPUT_SIZE;y++){
+ctx.drawImage(temp,0,0,INPUT_SIZE,INPUT_SIZE)
 
-for(let x=0;x<INPUT_SIZE;x++){
+const imgData = ctx.getImageData(0,0,INPUT_SIZE,INPUT_SIZE)
 
-const srcX = Math.floor(x * scaleX)
-const srcY = Math.floor(y * scaleY)
+const data = imgData.data
 
-const idx = (srcY * width + srcX) * 4
+const floatData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
 
-const r = data[idx] / 255
-const g = data[idx+1] / 255
-const b = data[idx+2] / 255
+for(let i=0;i<INPUT_SIZE*INPUT_SIZE;i++){
 
-const pos = y * INPUT_SIZE + x
-
-tensor[pos] = r
-tensor[pos + INPUT_SIZE*INPUT_SIZE] = g
-tensor[pos + INPUT_SIZE*INPUT_SIZE*2] = b
+floatData[i] = data[i*4] / 255
+floatData[i + INPUT_SIZE*INPUT_SIZE] = data[i*4+1] / 255
+floatData[i + 2*INPUT_SIZE*INPUT_SIZE] = data[i*4+2] / 255
 
 }
 
+return new ort.Tensor(
+"float32",
+floatData,
+[1,3,INPUT_SIZE,INPUT_SIZE]
+)
+
 }
 
-const inputTensor = new ort.Tensor("float32",tensor,[1,3,INPUT_SIZE,INPUT_SIZE])
-
-return{inputTensor,scaleX,scaleY}
-
-}
 
 
 // ================= POSTPROCESS =================
 
-function postprocess(results,scaleX,scaleY){
-
-const output = results.output0.data
-
-const numPred = results.output0.dims[2]
+function postprocess(output,width,height){
 
 const detections = []
 
-for(let i=0;i<numPred;i++){
+const rows = output.length / 85
 
-const offset = i*84
+for(let i=0;i<rows;i++){
 
-const x = output[offset]
-const y = output[offset+1]
-const w = output[offset+2]
-const h = output[offset+3]
+const confidence = output[i*85+4]
 
+if(confidence < CONFIDENCE_THRESHOLD) continue
+
+let maxClass = 0
 let maxScore = 0
-let classId = -1
 
-for(let c=4;c<84;c++){
+for(let j=5;j<85;j++){
 
-if(output[offset+c] > maxScore){
+const score = output[i*85+j]
 
-maxScore = output[offset+c]
-classId = c-4
+if(score > maxScore){
+
+maxScore = score
+maxClass = j-5
+
+}
 
 }
 
-}
+const finalScore = confidence * maxScore
 
-if(maxScore > 0.5){
+if(finalScore < CONFIDENCE_THRESHOLD) continue
 
-const box = {
+const cx = output[i*85]
+const cy = output[i*85+1]
+const w = output[i*85+2]
+const h = output[i*85+3]
 
-x:(x - w/2) * scaleX,
-y:(y - h/2) * scaleY,
-width:w * scaleX,
-height:h * scaleY
-
-}
+const x = (cx - w/2) * width
+const y = (cy - h/2) * height
 
 detections.push({
 
-classId,
-score:maxScore,
-box,
-crop:null
+classId:maxClass,
+confidence:finalScore,
+
+box:{
+x,
+y,
+width:w*width,
+height:h*height
+}
 
 })
-
-}
 
 }
 
@@ -170,27 +181,33 @@ return nonMaxSuppression(detections)
 }
 
 
+
 // ================= NMS =================
 
 function nonMaxSuppression(detections){
 
-detections.sort((a,b)=>b.score-a.score)
+detections.sort((a,b)=>b.confidence-a.confidence)
 
-const final = []
+const results = []
 
 while(detections.length){
 
-const first = detections.shift()
+const best = detections.shift()
 
-final.push(first)
+results.push(best)
 
-detections = detections.filter(det=>iou(first.box,det.box) < 0.45)
+detections = detections.filter(d=>{
+
+return iou(best.box,d.box) < NMS_THRESHOLD
+
+})
 
 }
 
-return final
+return results
 
 }
+
 
 
 // ================= IOU =================
@@ -203,11 +220,13 @@ const y1 = Math.max(a.y,b.y)
 const x2 = Math.min(a.x+a.width,b.x+b.width)
 const y2 = Math.min(a.y+a.height,b.y+b.height)
 
-const inter = Math.max(0,x2-x1) * Math.max(0,y2-y1)
+const intersection = Math.max(0,x2-x1) * Math.max(0,y2-y1)
 
-const areaA = a.width * a.height
-const areaB = b.width * b.height
+const union =
+a.width*a.height +
+b.width*b.height -
+intersection
 
-return inter / (areaA + areaB - inter)
+return intersection / union
 
 }
