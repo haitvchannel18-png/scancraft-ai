@@ -1,174 +1,182 @@
-// ================= IMPORTS =================
+// ================= IMPORT =================
 
-import * as THREE from "/assets/libs/three.js"
-import { logAI } from "../utils/AILogger.js"
 import { emit } from "../core/events.js"
+import { CONFIG } from "../utils/config.js"
+
+// ThreeJS loaders
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js"
+import { DRACOLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/DRACOLoader.js"
 
 
-// ================= STATE =================
 
-let renderer
-let scene
-let camera
-let controls
-let currentModel
+// ================= GLOBAL =================
+
+let loader
+let dracoLoader
+let modelCache = new Map()
 
 
-// ================= INIT VIEWER =================
 
-export function initViewer(container){
+// ================= INIT =================
 
-scene = new THREE.Scene()
+export function initModelLoader(){
 
-camera = new THREE.PerspectiveCamera(
-60,
-container.clientWidth/container.clientHeight,
-0.1,
-1000
+loader = new GLTFLoader()
+
+dracoLoader = new DRACOLoader()
+
+dracoLoader.setDecoderPath(
+"https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/libs/draco/"
 )
 
-camera.position.set(0,1.5,3)
-
-renderer = new THREE.WebGLRenderer({
-antialias:true,
-alpha:true
-})
-
-renderer.setSize(container.clientWidth, container.clientHeight)
-
-container.appendChild(renderer.domElement)
-
-addLights()
-
-animate()
+loader.setDRACOLoader(dracoLoader)
 
 }
 
-
-// ================= LIGHTING =================
-
-function addLights(){
-
-const ambient = new THREE.AmbientLight(0xffffff,0.6)
-scene.add(ambient)
-
-const dirLight = new THREE.DirectionalLight(0xffffff,0.8)
-
-dirLight.position.set(5,10,7)
-
-scene.add(dirLight)
-
-}
 
 
 // ================= LOAD MODEL =================
 
-export async function loadModel(objectName){
-
-logAI("Loading 3D model for " + objectName)
-
-emit("viewer:model-loading",objectName)
-
-const modelPath = `/models/vision/${objectName}.glb`
+export async function loadModel(modelPath){
 
 try{
 
-const loader = new THREE.GLTFLoader()
+// CACHE CHECK
+if(modelCache.has(modelPath)){
 
-loader.load(
-
-modelPath,
-
-(gltf)=>{
-
-if(currentModel){
-
-scene.remove(currentModel)
+return cloneModel(modelCache.get(modelPath))
 
 }
 
-currentModel = gltf.scene
+emit("viewer:model-loading", modelPath)
 
-scene.add(currentModel)
+const gltf = await loader.loadAsync(modelPath)
 
-emit("viewer:model-loaded",objectName)
+const model = gltf.scene
 
-},
+prepareModel(model)
 
-undefined,
+modelCache.set(modelPath, model)
 
-(err)=>{
+emit("viewer:model-loaded", model)
 
-logAI("Model not found, loading fallback")
+return cloneModel(model)
 
-loadFallbackModel()
+}catch(err){
 
-}
+console.error("Model loading failed", err)
 
-)
+emit("viewer:model-error", err)
 
-}catch(e){
-
-loadFallbackModel()
+throw err
 
 }
 
 }
 
 
-// ================= FALLBACK MODEL =================
 
-function loadFallbackModel(){
+// ================= PREPARE MODEL =================
 
-const geometry = new THREE.BoxGeometry(1,1,1)
+function prepareModel(model){
 
-const material = new THREE.MeshStandardMaterial({
+model.traverse(obj => {
 
-color:0x00aaff,
-metalness:0.3,
-roughness:0.4
+if(obj.isMesh){
+
+obj.castShadow = true
+obj.receiveShadow = true
+
+if(obj.material){
+
+obj.material.metalness = obj.material.metalness || 0.3
+obj.material.roughness = obj.material.roughness || 0.7
+
+}
+
+}
 
 })
 
-const cube = new THREE.Mesh(geometry,material)
-
-scene.add(cube)
-
-currentModel = cube
-
-emit("viewer:fallback-model")
+centerModel(model)
 
 }
 
 
-// ================= MODEL ROTATION =================
 
-export function rotateModel(speed = 0.01){
+// ================= CENTER MODEL =================
 
-if(!currentModel) return
+function centerModel(model){
 
-currentModel.rotation.y += speed
+const box = new THREE.Box3().setFromObject(model)
 
-}
+const center = new THREE.Vector3()
 
+box.getCenter(center)
 
-// ================= MODEL SCALE =================
-
-export function scaleModel(factor){
-
-if(!currentModel) return
-
-currentModel.scale.set(factor,factor,factor)
+model.position.sub(center)
 
 }
 
 
-// ================= RENDER LOOP =================
 
-function animate(){
+// ================= SCALE MODEL =================
 
-requestAnimationFrame(animate)
+export function scaleModel(model, targetSize = 2){
 
-renderer.render(scene,camera)
+const box = new THREE.Box3().setFromObject(model)
+
+const size = new THREE.Vector3()
+
+box.getSize(size)
+
+const maxDim = Math.max(size.x, size.y, size.z)
+
+const scale = targetSize / maxDim
+
+model.scale.setScalar(scale)
+
+}
+
+
+
+// ================= CLONE MODEL =================
+
+function cloneModel(model){
+
+return model.clone(true)
+
+}
+
+
+
+// ================= LOAD BY OBJECT =================
+
+export async function loadModelFromObject(object){
+
+// simple mapping
+
+const name = object.label?.toLowerCase()
+
+let modelPath = CONFIG.MODEL_PATH + "default.glb"
+
+if(name.includes("chair")) modelPath = CONFIG.MODEL_PATH + "chair.glb"
+
+if(name.includes("bottle")) modelPath = CONFIG.MODEL_PATH + "bottle.glb"
+
+if(name.includes("phone")) modelPath = CONFIG.MODEL_PATH + "phone.glb"
+
+return loadModel(modelPath)
+
+}
+
+
+
+// ================= CLEAR CACHE =================
+
+export function clearModelCache(){
+
+modelCache.clear()
 
 }
