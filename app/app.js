@@ -1,383 +1,181 @@
-/* =========================
-   CONFIG
-========================= */
+// ================= IMPORT MODULES =================
 
-const AI_PROXY_URL = "https://your-ai-proxy-url.workers.dev"; // change
-const UNSPLASH_KEY = "demo"; // optional if you have key
+import { initPipeline } from "./modules/core/pipeline.js"
+import { initEvents } from "./modules/core/events.js"
+import { initAudio } from "./modules/audio/audio-engine.js"
 
-/* =========================
-   GLOBAL STATE
-========================= */
+import { startCamera } from "./modules/camera/camera.js"
 
-let video = document.getElementById("camera");
-let canvas = document.getElementById("overlay");
-let ctx = canvas.getContext("2d");
+import { askAI } from "./modules/ai/object-chat.js"
 
-let scanBtn = document.getElementById("scanBtn");
-let voiceBtn = document.getElementById("voiceBtn");
+import { startVoice } from "./modules/voice/conversation.js"
 
-let model;
-let scanning = false;
 
-/* =========================
-   SOUND SYSTEM
-========================= */
+// ================= DOM REFERENCES =================
 
-const scanSound = new Howl({
-src:["sounds/scan.mp3"],
-volume:0.5
-});
+const loadingScreen = document.getElementById("loading-screen")
 
-const detectSound = new Howl({
-src:["sounds/detect.mp3"],
-volume:0.4
-});
+const cameraVideo = document.getElementById("camera")
 
-const clickSound = new Howl({
-src:["sounds/click.mp3"],
-volume:0.4
-});
+const scanBtn = document.getElementById("scanBtn")
 
-/* =========================
-   CAMERA START
-========================= */
+const aiChat = document.getElementById("ai-chat")
 
-async function startCamera(){
+const aiInput = document.getElementById("aiQuestion")
 
-try{
+const askBtn = document.getElementById("askBtn")
 
-const stream = await navigator.mediaDevices.getUserMedia({
-video:{facingMode:"environment"},
-audio:false
-});
+const voiceBtn = document.getElementById("voiceToggle")
 
-video.srcObject = stream;
+const voiceUI = document.getElementById("voice-ui")
 
-}catch(e){
+const resultPanel = document.getElementById("result-panel")
 
-alert("Camera access denied");
 
-}
+// ================= TAB SYSTEM =================
 
-}
+const tabButtons = document.querySelectorAll("#result-tabs button")
 
-startCamera();
+const tabs = document.querySelectorAll(".result-tab")
 
-/* =========================
-   LOAD AI MODEL
-========================= */
+tabButtons.forEach(btn => {
 
-async function loadModel(){
+btn.addEventListener("click", () => {
 
-model = await cocoSsd.load();
+const target = btn.dataset.tab
 
-console.log("AI Model Loaded");
+tabs.forEach(tab => tab.classList.add("hidden"))
 
-}
+document.getElementById(target + "-panel").classList.remove("hidden")
 
-loadModel();
-
-/* =========================
-   CANVAS RESIZE
-========================= */
-
-function resizeCanvas(){
-
-canvas.width = video.videoWidth;
-canvas.height = video.videoHeight;
-
-}
-
-video.addEventListener("loadeddata", resizeCanvas);
-
-/* =========================
-   SCAN OBJECTS
-========================= */
-
-async function detectObjects(){
-
-if(!model || !scanning) return;
-
-const predictions = await model.detect(video);
-
-ctx.clearRect(0,0,canvas.width,canvas.height);
-
-predictions.forEach(pred=>{
-
-if(pred.score > 0.6){
-
-drawBox(pred);
-
-}
-
-});
-
-requestAnimationFrame(detectObjects);
-
-}
-
-/* =========================
-   DRAW BOUNDING BOX
-========================= */
-
-function drawBox(pred){
-
-let [x,y,w,h] = pred.bbox;
-
-ctx.strokeStyle = "#ff3cac";
-ctx.lineWidth = 3;
-ctx.strokeRect(x,y,w,h);
-
-ctx.fillStyle = "#ff3cac";
-ctx.font = "16px sans-serif";
-
-ctx.fillText(
-`${pred.class} ${(pred.score*100).toFixed(1)}%`,
-x,
-y>20?y-5:20
-);
-
-}
-
-/* =========================
-   SCAN BUTTON
-========================= */
-
-scanBtn.addEventListener("click",()=>{
-
-clickSound.play();
-
-if(!scanning){
-
-scanning = true;
-
-scanSound.play();
-
-detectObjects();
-
-scanBtn.innerText = "Scanning...";
-
-}else{
-
-scanning = false;
-
-scanBtn.innerText = "Scan Object";
-
-}
-
-});
-
-/* =========================
-   AI ASK SYSTEM
-========================= */
-
-async function askAI(question){
-
-let response = await fetch(AI_PROXY_URL,{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-message:question
 })
-});
 
-let data = await response.json();
+})
 
-return data.reply;
 
-}
+// ================= APP BOOT =================
 
-/* =========================
-   VOICE RECOGNITION
-========================= */
+async function bootApp(){
 
-function startVoice(){
+console.log("Booting ScanCraft AI")
 
-const recognition = new (window.SpeechRecognition ||
-window.webkitSpeechRecognition)();
+initEvents()
 
-recognition.lang="en-US";
+await initAudio()
 
-recognition.start();
+await initPipeline()
 
-recognition.onresult = async function(e){
+await startCamera(cameraVideo)
 
-let text = e.results[0][0].transcript;
+loadingScreen.style.display = "none"
 
-addChat("You",text);
-
-let reply = await askAI(text);
-
-addChat("AI",reply);
-
-speak(reply);
-
-};
+console.log("ScanCraft AI Ready")
 
 }
 
-/* =========================
-   VOICE BUTTON
-========================= */
+bootApp()
 
-if(voiceBtn){
 
-voiceBtn.addEventListener("click",()=>{
+// ================= SCAN BUTTON =================
 
-clickSound.play();
+scanBtn.addEventListener("click", () => {
 
-startVoice();
+console.log("Scan triggered")
 
-});
+// future detection trigger
 
-}
+})
 
-/* =========================
-   SPEECH SYNTHESIS
-========================= */
 
-function speak(text){
+// ================= AI CHAT =================
 
-let speech = new SpeechSynthesisUtterance(text);
+askBtn.addEventListener("click", async () => {
 
-speech.lang="en-US";
+const question = aiInput.value
 
-speech.rate=1;
+if(!question) return
 
-speechSynthesis.speak(speech);
+addUserMessage(question)
 
-}
+aiInput.value = ""
 
-/* =========================
-   CHAT UI
-========================= */
+const reply = await askAI(question)
 
-function addChat(role,text){
+addAIMessage(reply)
 
-let box = document.getElementById("aiInfo");
+})
 
-if(!box) return;
 
-let div = document.createElement("div");
+// ================= CHAT MESSAGE HELPERS =================
 
-div.innerHTML = `<b>${role}:</b> ${text}`;
+function addUserMessage(text){
 
-box.appendChild(div);
+const div = document.createElement("div")
 
-}
+div.className = "user-message"
 
-/* =========================
-   WIKIPEDIA INFO
-========================= */
+div.innerText = text
 
-async function fetchWiki(term){
+aiChat.appendChild(div)
 
-let url =
-`https://en.wikipedia.org/api/rest_v1/page/summary/${term}`;
-
-let res = await fetch(url);
-
-let data = await res.json();
-
-return data.extract;
+aiChat.scrollTop = aiChat.scrollHeight
 
 }
 
-/* =========================
-   UNSPLASH IMAGES
-========================= */
 
-async function fetchImages(term){
+function addAIMessage(text){
 
-let url =
-`https://api.unsplash.com/search/photos?query=${term}&per_page=6&client_id=${UNSPLASH_KEY}`;
+const div = document.createElement("div")
 
-let res = await fetch(url);
+div.className = "ai-message"
 
-let data = await res.json();
+div.innerText = text
 
-displayGallery(data.results);
+aiChat.appendChild(div)
+
+aiChat.scrollTop = aiChat.scrollHeight
 
 }
 
-/* =========================
-   IMAGE GALLERY
-========================= */
 
-function displayGallery(images){
+// ================= VOICE SYSTEM =================
 
-let gallery = document.getElementById("gallery");
+voiceBtn.addEventListener("click", async () => {
 
-if(!gallery) return;
+voiceUI.classList.remove("hidden")
 
-gallery.innerHTML="";
+const text = await startVoice()
 
-images.forEach(img=>{
+voiceUI.classList.add("hidden")
 
-let i=document.createElement("img");
+addUserMessage(text)
 
-i.src=img.urls.small;
+const reply = await askAI(text)
 
-gallery.appendChild(i);
+addAIMessage(reply)
 
-});
+})
 
-}
 
-/* =========================
-   INDEXEDDB HISTORY
-========================= */
+// ================= OBJECT RESULT DISPLAY =================
 
-let db;
+export function showObjectResult(data){
 
-let request = indexedDB.open("ScanHistory",1);
+resultPanel.classList.remove("hidden")
 
-request.onupgradeneeded = function(e){
+document.getElementById("objectName").innerText = data.name
 
-db = e.target.result;
+document.getElementById("objectConfidence").innerText = "Confidence: " + data.confidence
 
-db.createObjectStore("objects",{autoIncrement:true});
-
-};
-
-request.onsuccess = function(e){
-
-db = e.target.result;
-
-};
-
-/* =========================
-   SAVE SCAN
-========================= */
-
-function saveScan(object){
-
-let tx = db.transaction(["objects"],"readwrite");
-
-let store = tx.objectStore("objects");
-
-store.add(object);
+document.getElementById("objectPreview").src = data.image
 
 }
 
-/* =========================
-   GSAP UI ANIMATIONS
-========================= */
 
-window.addEventListener("load",()=>{
+// ================= FUTURE HOOKS =================
 
-gsap.from(".logo",{
-y:-30,
-opacity:0,
-duration:1
-});
+window.ScanCraft = {
 
-gsap.from(".scan-btn",{
-scale:0,
-duration:1,
-delay:0.4
-});
+showObjectResult,
 
-});
+}
