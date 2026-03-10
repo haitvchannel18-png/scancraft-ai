@@ -1,186 +1,263 @@
-// ================= IMPORTS =================
+// ================= IMPORT =================
 
-import * as THREE from "/assets/libs/three.js"
-import { initViewer, loadModel, rotateModel, scaleModel } from "./model-loader.js"
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+import { on, emit } from "../core/events.js"
+import { loadModelFromObject, scaleModel } from "./model-loader.js"
+
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js"
 
 
-// ================= STATE =================
 
+// ================= GLOBAL =================
+
+let scene
+let camera
+let renderer
+let controls
 let container
-let touchStartX = 0
-let touchStartY = 0
-let zoomLevel = 1
-let rotateSpeed = 0.01
+let currentModel
+let clock = new THREE.Clock()
 
-let autoRotate = false
 
 
 // ================= INIT =================
 
-export function startViewer(containerElement){
+export function initViewer(){
 
-container = containerElement
+container = document.getElementById("viewer-container")
 
-initViewer(container)
+if(!container) return
 
-logAI("3D viewer started")
+createScene()
+createRenderer()
+createCamera()
+createLights()
+createControls()
 
-emit("viewer:ready")
+window.addEventListener("resize", resizeViewer)
 
-setupGestures()
+animate()
 
-}
-
-
-// ================= LOAD OBJECT MODEL =================
-
-export function showObjectModel(objectName){
-
-logAI("Viewer loading object: " + objectName)
-
-loadModel(objectName)
-
-emit("viewer:object-show", objectName)
+listenViewerEvents()
 
 }
 
 
-// ================= ROTATION CONTROL =================
 
-export function enableAutoRotate(){
+// ================= SCENE =================
 
-autoRotate = true
+function createScene(){
 
-}
+scene = new THREE.Scene()
 
-export function disableAutoRotate(){
-
-autoRotate = false
+scene.background = new THREE.Color(0x050510)
 
 }
 
 
-// ================= ZOOM CONTROL =================
 
-export function zoomIn(){
+// ================= CAMERA =================
 
-zoomLevel += 0.2
+function createCamera(){
 
-scaleModel(zoomLevel)
+camera = new THREE.PerspectiveCamera(
 
-}
+60,
+container.clientWidth / container.clientHeight,
+0.1,
+1000
 
-export function zoomOut(){
+)
 
-zoomLevel -= 0.2
+camera.position.set(0,1.5,4)
 
-if(zoomLevel < 0.2) zoomLevel = 0.2
-
-scaleModel(zoomLevel)
-
-}
-
-
-// ================= TOUCH GESTURES =================
-
-function setupGestures(){
-
-container.addEventListener("touchstart",handleTouchStart)
-
-container.addEventListener("touchmove",handleTouchMove)
-
-container.addEventListener("wheel",handleMouseWheel)
+scene.add(camera)
 
 }
 
 
-// ================= TOUCH START =================
 
-function handleTouchStart(event){
+// ================= RENDERER =================
 
-const touch = event.touches[0]
+function createRenderer(){
 
-touchStartX = touch.clientX
-touchStartY = touch.clientY
+renderer = new THREE.WebGLRenderer({
 
-}
+antialias:true,
+alpha:true
 
+})
 
-// ================= TOUCH MOVE =================
+renderer.setPixelRatio(window.devicePixelRatio)
 
-function handleTouchMove(event){
+renderer.setSize(
 
-const touch = event.touches[0]
+container.clientWidth,
+container.clientHeight
 
-const dx = touch.clientX - touchStartX
+)
 
-rotateModel(dx * 0.002)
+renderer.shadowMap.enabled = true
 
-touchStartX = touch.clientX
-
-}
-
-
-// ================= MOUSE WHEEL =================
-
-function handleMouseWheel(event){
-
-if(event.deltaY < 0){
-
-zoomIn()
-
-}else{
-
-zoomOut()
-
-}
+container.appendChild(renderer.domElement)
 
 }
 
 
-// ================= UPDATE LOOP =================
 
-export function viewerUpdate(){
+// ================= LIGHTING =================
 
-if(autoRotate){
+function createLights(){
 
-rotateModel(rotateSpeed)
+const ambient = new THREE.AmbientLight(0xffffff,0.6)
+scene.add(ambient)
 
-}
+const dirLight = new THREE.DirectionalLight(0xffffff,1)
 
-}
+dirLight.position.set(4,6,4)
 
+dirLight.castShadow = true
 
-// ================= VIEWER RESET =================
-
-export function resetViewer(){
-
-zoomLevel = 1
-
-scaleModel(1)
-
-autoRotate = false
-
-emit("viewer:reset")
+scene.add(dirLight)
 
 }
 
 
-// ================= ENTER PAINT MODE =================
 
-export function enterPaintMode(){
+// ================= CONTROLS =================
 
-emit("viewer:paint-mode")
+function createControls(){
+
+controls = new OrbitControls(camera,renderer.domElement)
+
+controls.enableDamping = true
+
+controls.dampingFactor = 0.05
+
+controls.enablePan = true
+
+controls.minDistance = 1
+controls.maxDistance = 10
 
 }
 
 
-// ================= ENTER EDIT MODE =================
 
-export function enterEditMode(){
+// ================= LOAD MODEL =================
 
-emit("viewer:edit-mode")
+async function openViewer(object){
+
+emit("viewer:opening")
+
+if(currentModel){
+
+scene.remove(currentModel)
+
+}
+
+const model = await loadModelFromObject(object)
+
+scaleModel(model)
+
+scene.add(model)
+
+currentModel = model
+
+emit("viewer:model-ready",object)
+
+}
+
+
+
+// ================= EVENTS =================
+
+function listenViewerEvents(){
+
+on("viewer:open", openViewer)
+
+}
+
+
+
+// ================= ANIMATION LOOP =================
+
+function animate(){
+
+requestAnimationFrame(animate)
+
+const delta = clock.getDelta()
+
+if(controls){
+
+controls.update(delta)
+
+}
+
+renderer.render(scene,camera)
+
+}
+
+
+
+// ================= RESIZE =================
+
+function resizeViewer(){
+
+if(!renderer) return
+
+camera.aspect = container.clientWidth / container.clientHeight
+
+camera.updateProjectionMatrix()
+
+renderer.setSize(
+
+container.clientWidth,
+container.clientHeight
+
+)
+
+}
+
+
+
+// ================= CAMERA RESET =================
+
+export function resetCamera(){
+
+camera.position.set(0,1.5,4)
+
+controls.reset()
+
+}
+
+
+
+// ================= ROTATE MODEL =================
+
+export function rotateModel(speed = 0.01){
+
+if(!currentModel) return
+
+currentModel.rotation.y += speed
+
+}
+
+
+
+// ================= MODEL INFO =================
+
+export function getCurrentModel(){
+
+return currentModel
+
+}
+
+
+
+// ================= SCREENSHOT =================
+
+export function captureViewerImage(){
+
+return renderer.domElement.toDataURL("image/png")
 
 }
