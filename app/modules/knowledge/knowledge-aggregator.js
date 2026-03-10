@@ -1,64 +1,108 @@
 // ================= IMPORTS =================
 
+import { getMaterialInfo } from "../data/materials.js"
+import { getHistoryInfo } from "../data/history.js"
+import { getManufacturingInfo } from "../data/manufacturing.js"
+
+import { generateFutureConcepts } from "../ai/future-ai.js"
+
 import { emit } from "../core/events.js"
+import { CONFIG } from "../utils/config.js"
 
 
 
-// ================= KNOWLEDGE SOURCES =================
+// ================= STATE =================
 
-const localKnowledge = {
-
-materials:{
-electronics:["plastic","copper","silicon","aluminum"],
-mechanical:["steel","iron","alloy"],
-furniture:["wood","metal","plastic"]
-},
-
-uses:{
-electronics:["signal processing","audio playback","communication"],
-mechanical:["power transfer","motion control"],
-furniture:["support","sitting","storage"]
-},
-
-manufacturing:{
-electronics:"PCB fabrication and electronic assembly",
-mechanical:"industrial machining and metal forming",
-furniture:"cutting, shaping and structural assembly"
-}
-
-}
+let knowledgeCache = new Map()
 
 
 
-// ================= AGGREGATE KNOWLEDGE =================
+// ================= MAIN FUNCTION =================
 
-export async function aggregateKnowledge(object){
-
-emit("knowledge:start")
+export async function aggregateKnowledge(reasoning){
 
 try{
 
-const sources = await Promise.all([
+const objectName = reasoning.guess || reasoning.object
 
-getLocalKnowledge(object),
-fetchWikipediaData(object.name),
-generateAIInsights(object)
+emit("knowledge:start", objectName)
 
-])
 
-const merged = mergeKnowledge(sources)
+// cache check
 
-emit("knowledge:complete",merged)
+if(knowledgeCache.has(objectName)){
 
-return merged
+emit("knowledge:cache-hit", objectName)
+
+return knowledgeCache.get(objectName)
+
+}
+
+
+
+// ================= DATA COLLECTION =================
+
+const materials = await getMaterialInfo(objectName)
+
+const history = await getHistoryInfo(objectName)
+
+const manufacturing = await getManufacturingInfo(objectName)
+
+const futureIdeas = await generateFutureConcepts({ name: objectName })
+
+
+
+// ================= IMAGE SOURCES =================
+
+const images = buildImageSources(objectName)
+
+
+
+// ================= DESCRIPTION =================
+
+const description = buildDescription(reasoning)
+
+
+
+// ================= PACKAGE =================
+
+const knowledge = {
+
+name: objectName,
+
+description,
+
+material: materials,
+
+history,
+
+manufacturing,
+
+images,
+
+futureIdeas
+
+}
+
+
+
+// ================= CACHE =================
+
+knowledgeCache.set(objectName, knowledge)
+
+
+
+emit("knowledge:complete", knowledge)
+
+return knowledge
 
 }catch(err){
 
-console.error("Knowledge aggregation failed",err)
+console.error("Knowledge aggregation failed", err)
 
 emit("knowledge:error")
 
-return getLocalKnowledge(object)
+return null
 
 }
 
@@ -66,128 +110,68 @@ return getLocalKnowledge(object)
 
 
 
-// ================= LOCAL KNOWLEDGE =================
+// ================= DESCRIPTION BUILDER =================
 
-function getLocalKnowledge(object){
+function buildDescription(reasoning){
 
-const category = object.category || "general"
+const name = reasoning.guess || reasoning.object
+
+const category = reasoning.category || "object"
+
+const purpose = reasoning.purpose || "general usage"
+
+return `${name} is a ${category} typically used for ${purpose}.`
+
+}
+
+
+
+// ================= IMAGE BUILDER =================
+
+function buildImageSources(objectName){
+
+const encoded = encodeURIComponent(objectName)
+
+return [
+
+`https://source.unsplash.com/600x400/?${encoded}`,
+
+`https://source.unsplash.com/600x400/?${encoded},technology`,
+
+`https://source.unsplash.com/600x400/?${encoded},product`
+
+]
+
+}
+
+
+
+// ================= CACHE CONTROL =================
+
+export function clearKnowledgeCache(){
+
+knowledgeCache.clear()
+
+emit("knowledge:cache:cleared")
+
+}
+
+
+
+// ================= SUMMARY =================
+
+export function summarizeKnowledge(knowledge){
+
+if(!knowledge) return null
 
 return {
 
-materials: localKnowledge.materials[category] || [],
+name: knowledge.name,
 
-uses: localKnowledge.uses[category] || [],
+materialCount: knowledge.material?.length || 0,
 
-manufacturing: localKnowledge.manufacturing[category] || "Industrial fabrication"
-
-}
+futureConcepts: knowledge.futureIdeas?.length || 0
 
 }
-
-
-
-// ================= WIKIPEDIA FETCH =================
-
-async function fetchWikipediaData(name){
-
-try{
-
-const url =
-`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`
-
-const response = await fetch(url)
-
-if(!response.ok){
-
-throw new Error("Wiki fetch failed")
-
-}
-
-const data = await response.json()
-
-return {
-
-history: data.extract || null,
-
-thumbnail: data.thumbnail?.source || null
-
-}
-
-}catch(err){
-
-return {
-
-history:null,
-thumbnail:null
-
-}
-
-}
-
-}
-
-
-
-// ================= AI INSIGHTS =================
-
-async function generateAIInsights(object){
-
-return {
-
-future: predictFuture(object),
-
-category: object.category || "general"
-
-}
-
-}
-
-
-
-// ================= FUTURE PREDICTION =================
-
-function predictFuture(object){
-
-const cat = object.category?.toLowerCase()
-
-if(cat === "electronics"){
-
-return "Future versions may integrate AI chips and improved power efficiency."
-
-}
-
-if(cat === "mechanical"){
-
-return "Future designs may include lighter alloys and automated manufacturing."
-
-}
-
-return "Future developments may improve efficiency and durability."
-
-}
-
-
-
-// ================= MERGE KNOWLEDGE =================
-
-function mergeKnowledge(sources){
-
-const result = {}
-
-sources.forEach(source=>{
-
-Object.keys(source).forEach(key=>{
-
-if(!result[key]){
-
-result[key] = source[key]
-
-}
-
-})
-
-})
-
-return result
 
 }
