@@ -1,167 +1,171 @@
 // ================= IMPORTS =================
 
 import { emit } from "./events.js"
-import { loadModels } from "./model-loader.js"
-import { scheduleTask } from "./task-scheduler.js"
-import { logAI } from "../utils/ai-logger.js"
 
 import { detectObjects } from "../detection/yolo.js"
+
 import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { searchSimilar } from "../vision-search/similarity-search.js"
 
-import { runReasoning } from "../ai/reasoning-engine.js"
-import { fetchKnowledge } from "../knowledge/knowledge-aggregator.js"
+import { findSimilarObjects, guessObject } from "../vision-search/similarity-engine.js"
 
+import { explainObject } from "../ai/explain-ai.js"
 
-// ================= PIPELINE STATE =================
-
-let modelsReady = false
-let pipelineRunning = false
+import { showObjectModel } from "../viewer/viewer.js"
 
 
-// ================= INIT PIPELINE =================
+// ================= STATE =================
 
-export async function initPipeline(){
+let processing = false
 
-logAI("Initializing AI pipeline")
+let frameInterval = 200
 
-await loadModels()
 
-modelsReady = true
+// ================= START STREAM =================
 
-emit("pipeline:ready")
+export function startStreamProcessor(videoElement){
 
-logAI("AI pipeline ready")
+emit("pipeline:started")
+
+setInterval(()=>{
+
+processFrame(videoElement)
+
+}, frameInterval)
 
 }
 
 
-// ================= MAIN FRAME PROCESS =================
+// ================= FRAME PROCESS =================
 
-export async function processFrame(frame){
+async function processFrame(video){
 
-if(!modelsReady) return
+if(processing) return
 
-if(pipelineRunning) return
-
-pipelineRunning = true
+processing = true
 
 try{
 
-// ---------------- DETECTION ----------------
+const frame = captureFrame(video)
 
-emit("pipeline:stage","detect")
+emit("pipeline:frame")
+
+// ---------------- DETECTION ----------------
 
 const detections = await detectObjects(frame)
 
-if(!detections || detections.length === 0){
+if(!detections.length){
 
-pipelineRunning = false
+processing = false
+
 return
 
 }
 
-// choose best object
+// choose strongest detection
 
-const target = detections[0]
+const object = detections[0]
+
+emit("pipeline:object-detected", object)
 
 // ---------------- FEATURE EXTRACTION ----------------
 
-emit("pipeline:stage","feature")
+const crop = cropObject(frame, object.box)
 
-const embedding = await extractFeatures(frame,target.box)
+const features = await extractFeatures(crop)
 
+emit("pipeline:features")
 
 // ---------------- SIMILARITY SEARCH ----------------
 
-emit("pipeline:stage","similarity")
+const matches = await findSimilarObjects(features)
 
-const similar = await searchSimilar(embedding)
+const guessedObject = guessObject(matches)
 
+emit("pipeline:object-identified", guessedObject)
 
-// ---------------- REASONING ----------------
+// ---------------- AI EXPLANATION ----------------
 
-emit("pipeline:stage","reasoning")
+const explanation = await explainObject(guessedObject)
 
-const reasoning = await runReasoning({
+emit("pipeline:explanation", explanation)
 
-detection:target,
-similarObjects:similar
+// ---------------- VIEWER ----------------
 
-})
+showObjectModel(guessedObject.name)
 
-
-// ---------------- KNOWLEDGE ----------------
-
-emit("pipeline:stage","knowledge")
-
-const knowledge = await fetchKnowledge(reasoning.objectName)
-
-
-// ---------------- RESULT COMPOSE ----------------
-
-const result = {
-
-name: reasoning.objectName,
-
-confidence: target.score,
-
-image: target.crop,
-
-similar,
-
-knowledge
-
-}
-
-
-// ---------------- EMIT RESULT ----------------
-
-emit("pipeline:result", result)
-
-logAI("Pipeline result generated")
+emit("pipeline:model-loaded")
 
 }catch(err){
 
-emit("pipeline:error",err)
-
-console.error("Pipeline error:",err)
+console.error("Pipeline error", err)
 
 }
 
-pipelineRunning = false
+processing = false
 
 }
 
 
-// ================= STREAM PROCESSOR =================
+// ================= FRAME CAPTURE =================
 
-export function startStreamProcessor(video){
+function captureFrame(video){
 
 const canvas = document.createElement("canvas")
 
-const ctx = canvas.getContext("2d")
-
-async function loop(){
-
-if(video.readyState === 4){
-
 canvas.width = video.videoWidth
-
 canvas.height = video.videoHeight
+
+const ctx = canvas.getContext("2d")
 
 ctx.drawImage(video,0,0)
 
-const frame = ctx.getImageData(0,0,canvas.width,canvas.height)
-
-scheduleTask(()=>processFrame(frame))
+return ctx.getImageData(
+0,
+0,
+canvas.width,
+canvas.height
+)
 
 }
 
-requestAnimationFrame(loop)
 
-}
+// ================= OBJECT CROP =================
 
-loop()
+function cropObject(frame, box){
+
+const canvas = document.createElement("canvas")
+
+canvas.width = box.width
+canvas.height = box.height
+
+const ctx = canvas.getContext("2d")
+
+const tempCanvas = document.createElement("canvas")
+
+tempCanvas.width = frame.width
+tempCanvas.height = frame.height
+
+const tempCtx = tempCanvas.getContext("2d")
+
+tempCtx.putImageData(frame,0,0)
+
+ctx.drawImage(
+tempCanvas,
+box.x,
+box.y,
+box.width,
+box.height,
+0,
+0,
+box.width,
+box.height
+)
+
+return ctx.getImageData(
+0,
+0,
+box.width,
+box.height
+)
 
 }
