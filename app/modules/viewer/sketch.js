@@ -1,189 +1,212 @@
-// ================= IMPORTS =================
+// ================= IMPORT =================
 
-import * as THREE from "/assets/libs/three.js"
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+import { on, emit } from "../core/events.js"
+import { playBrushSound } from "../audio/editor-sounds.js"
+import { fadeIn } from "../ui/animation-engine.js"
 
 
-// ================= STATE =================
+
+// ================= GLOBAL =================
 
 let sketchCanvas
-let sketchContext
-let sketchTexture
-
+let ctx
 let drawing = false
+let currentColor = "#00f7ff"
+let lineWidth = 3
+let history = []
 
-let lineColor = "#00ffff"
-let lineWidth = 4
 
 
 // ================= INIT =================
 
-export function initSketch(model){
+export function initSketch(){
 
-sketchCanvas = document.createElement("canvas")
+sketchCanvas = document.getElementById("sketch-canvas")
 
-sketchCanvas.width = 1024
-sketchCanvas.height = 1024
+if(!sketchCanvas) return
 
-sketchContext = sketchCanvas.getContext("2d")
+ctx = sketchCanvas.getContext("2d")
 
-sketchContext.clearRect(0,0,1024,1024)
+setupCanvas()
 
-sketchTexture = new THREE.CanvasTexture(sketchCanvas)
+listenEvents()
 
-applySketchTexture(model)
-
-logAI("Sketch system initialized")
-
-}
-
-
-// ================= APPLY TEXTURE =================
-
-function applySketchTexture(model){
-
-model.traverse((child)=>{
-
-if(child.isMesh){
-
-child.material.map = sketchTexture
-child.material.needsUpdate = true
-
-}
-
-})
+sketchCanvas.addEventListener("mousedown", startDraw)
+sketchCanvas.addEventListener("mousemove", draw)
+sketchCanvas.addEventListener("mouseup", stopDraw)
+sketchCanvas.addEventListener("mouseleave", stopDraw)
 
 }
 
 
-// ================= START DRAW =================
 
-export function startSketch(x,y){
+// ================= SETUP =================
+
+function setupCanvas(){
+
+resizeCanvas()
+
+window.addEventListener("resize", resizeCanvas)
+
+ctx.lineCap = "round"
+ctx.lineJoin = "round"
+
+}
+
+
+
+function resizeCanvas(){
+
+sketchCanvas.width = sketchCanvas.offsetWidth
+sketchCanvas.height = sketchCanvas.offsetHeight
+
+}
+
+
+
+// ================= EVENTS =================
+
+function listenEvents(){
+
+on("sketch:open", openSketch)
+
+on("sketch:clear", clearSketch)
+
+}
+
+
+
+// ================= OPEN =================
+
+function openSketch(){
+
+sketchCanvas.style.display = "block"
+
+fadeIn(sketchCanvas)
+
+emit("sketch:ready")
+
+}
+
+
+
+// ================= DRAW =================
+
+function startDraw(e){
 
 drawing = true
 
-sketchContext.beginPath()
+saveState()
 
-sketchContext.moveTo(x,y)
+ctx.beginPath()
+
+ctx.moveTo(e.offsetX,e.offsetY)
 
 }
 
 
-// ================= DRAW LINE =================
 
-export function drawSketch(x,y){
+function draw(e){
 
 if(!drawing) return
 
-sketchContext.strokeStyle = lineColor
-sketchContext.lineWidth = lineWidth
+ctx.lineWidth = lineWidth
+ctx.strokeStyle = currentColor
 
-sketchContext.lineTo(x,y)
+ctx.lineTo(e.offsetX,e.offsetY)
 
-sketchContext.stroke()
+ctx.stroke()
 
-sketchTexture.needsUpdate = true
-
-emit("sketch:drawing")
+playBrushSound()
 
 }
 
 
-// ================= STOP DRAW =================
 
-export function stopSketch(){
+function stopDraw(){
 
 drawing = false
 
-emit("sketch:complete")
+ctx.closePath()
 
 }
 
 
-// ================= COLOR =================
+
+// ================= SETTINGS =================
 
 export function setSketchColor(color){
 
-lineColor = color
+currentColor = color
 
 }
 
 
-// ================= LINE WIDTH =================
 
-export function setSketchWidth(width){
+export function setSketchWidth(size){
 
-lineWidth = width
-
-}
-
-
-// ================= DRAW SHAPES =================
-
-export function drawShape(type,x,y,size){
-
-sketchContext.strokeStyle = lineColor
-sketchContext.lineWidth = lineWidth
-
-if(type === "circle"){
-
-sketchContext.beginPath()
-sketchContext.arc(x,y,size,0,Math.PI*2)
-sketchContext.stroke()
+lineWidth = size
 
 }
 
-if(type === "square"){
-
-sketchContext.strokeRect(x-size,y-size,size*2,size*2)
-
-}
-
-if(type === "triangle"){
-
-sketchContext.beginPath()
-
-sketchContext.moveTo(x,y-size)
-
-sketchContext.lineTo(x-size,y+size)
-
-sketchContext.lineTo(x+size,y+size)
-
-sketchContext.closePath()
-
-sketchContext.stroke()
-
-}
-
-sketchTexture.needsUpdate = true
-
-emit("sketch:shape")
-
-}
 
 
 // ================= CLEAR =================
 
-export function clearSketch(){
+function clearSketch(){
 
-sketchContext.clearRect(0,0,1024,1024)
+ctx.clearRect(
 
-sketchTexture.needsUpdate = true
+0,
+0,
+sketchCanvas.width,
+sketchCanvas.height
 
-emit("sketch:cleared")
+)
+
+history = []
 
 }
+
+
+
+// ================= HISTORY =================
+
+function saveState(){
+
+history.push(
+
+ctx.getImageData(
+
+0,
+0,
+sketchCanvas.width,
+sketchCanvas.height
+
+)
+
+)
+
+}
+
+
+
+export function undoSketch(){
+
+if(history.length === 0) return
+
+const last = history.pop()
+
+ctx.putImageData(last,0,0)
+
+}
+
 
 
 // ================= EXPORT =================
 
 export function exportSketch(){
 
-const dataURL = sketchCanvas.toDataURL()
-
-emit("sketch:export", dataURL)
-
-return dataURL
+return sketchCanvas.toDataURL("image/png")
 
 }
