@@ -1,95 +1,186 @@
-// ================= IMPORTS =================
+// ================= IMPORT =================
 
-import * as THREE from "/assets/libs/three.js"
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+import { on, emit } from "../core/events.js"
+import { playBrushSound } from "../audio/editor-sounds.js"
+import { getCurrentModel } from "./viewer.js"
+
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
 
 
-// ================= STATE =================
+
+// ================= GLOBAL =================
 
 let paintCanvas
-let paintContext
-let paintTexture
-
-let brushSize = 10
+let ctx
 let brushColor = "#ff0000"
+let brushSize = 20
+let painting = false
+let texture
+let meshTarget
 
-let paintingEnabled = false
 
 
-// ================= INIT PAINT SYSTEM =================
+// ================= INIT =================
 
-export function initPainter(model){
+export function initPainter(){
 
-paintCanvas = document.createElement("canvas")
+paintCanvas = document.getElementById("paint-canvas")
 
-paintCanvas.width = 1024
-paintCanvas.height = 1024
+if(!paintCanvas) return
 
-paintContext = paintCanvas.getContext("2d")
+ctx = paintCanvas.getContext("2d")
 
-paintContext.fillStyle = "#ffffff"
-paintContext.fillRect(0,0,1024,1024)
+setupCanvas()
 
-paintTexture = new THREE.CanvasTexture(paintCanvas)
+listenPainterEvents()
 
-applyTextureToModel(model, paintTexture)
-
-logAI("Painter initialized")
+paintCanvas.addEventListener("mousedown", startPaint)
+paintCanvas.addEventListener("mousemove", paint)
+paintCanvas.addEventListener("mouseup", stopPaint)
 
 }
 
 
-// ================= APPLY TEXTURE =================
 
-function applyTextureToModel(model, texture){
+// ================= CANVAS =================
 
-model.traverse((child)=>{
+function setupCanvas(){
 
-if(child.isMesh){
+paintCanvas.width = 1024
+paintCanvas.height = 1024
 
-child.material.map = texture
-child.material.needsUpdate = true
+ctx.fillStyle = "#ffffff"
+ctx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
+
+texture = new THREE.CanvasTexture(paintCanvas)
+
+}
+
+
+
+// ================= EVENTS =================
+
+function listenPainterEvents(){
+
+on("painter:open", enablePainter)
+
+}
+
+
+
+// ================= ENABLE PAINTER =================
+
+function enablePainter(){
+
+const model = getCurrentModel()
+
+if(!model) return
+
+model.traverse(obj=>{
+
+if(obj.isMesh){
+
+meshTarget = obj
+
+applyTexture(obj)
 
 }
 
 })
 
-}
-
-
-// ================= ENABLE PAINT MODE =================
-
-export function enablePainting(){
-
-paintingEnabled = true
-
-emit("painter:enabled")
+emit("painter:ready")
 
 }
 
 
-// ================= DISABLE PAINT MODE =================
 
-export function disablePainting(){
+// ================= APPLY TEXTURE =================
 
-paintingEnabled = false
+function applyTexture(mesh){
 
-emit("painter:disabled")
+mesh.material.map = texture
 
-}
-
-
-// ================= SET BRUSH SIZE =================
-
-export function setBrushSize(size){
-
-brushSize = size
+mesh.material.needsUpdate = true
 
 }
 
 
-// ================= SET BRUSH COLOR =================
+
+// ================= START PAINT =================
+
+function startPaint(e){
+
+painting = true
+
+draw(e)
+
+}
+
+
+
+// ================= STOP PAINT =================
+
+function stopPaint(){
+
+painting = false
+
+ctx.beginPath()
+
+}
+
+
+
+// ================= DRAW =================
+
+function paint(e){
+
+if(!painting) return
+
+draw(e)
+
+}
+
+
+
+function draw(e){
+
+const rect = paintCanvas.getBoundingClientRect()
+
+const x = e.clientX - rect.left
+const y = e.clientY - rect.top
+
+ctx.lineWidth = brushSize
+ctx.lineCap = "round"
+ctx.strokeStyle = brushColor
+
+ctx.lineTo(x,y)
+ctx.stroke()
+ctx.beginPath()
+ctx.moveTo(x,y)
+
+playBrushSound()
+
+updateTexture()
+
+}
+
+
+
+// ================= UPDATE TEXTURE =================
+
+function updateTexture(){
+
+if(texture){
+
+texture.needsUpdate = true
+
+}
+
+}
+
+
+
+// ================= BRUSH SETTINGS =================
 
 export function setBrushColor(color){
 
@@ -98,84 +189,35 @@ brushColor = color
 }
 
 
-// ================= PAINT STROKE =================
 
-export function paint(x,y){
+export function setBrushSize(size){
 
-if(!paintingEnabled) return
-
-paintContext.fillStyle = brushColor
-
-paintContext.beginPath()
-
-paintContext.arc(x,y,brushSize,0,Math.PI*2)
-
-paintContext.fill()
-
-paintTexture.needsUpdate = true
-
-emit("painter:stroke")
+brushSize = size
 
 }
 
 
-// ================= CLEAR PAINT =================
 
-export function clearPainting(){
+// ================= CLEAR =================
 
-paintContext.fillStyle = "#ffffff"
+export function clearPaint(){
 
-paintContext.fillRect(0,0,1024,1024)
+ctx.clearRect(0,0,paintCanvas.width,paintCanvas.height)
 
-paintTexture.needsUpdate = true
+ctx.fillStyle = "#ffffff"
 
-emit("painter:cleared")
+ctx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
 
-}
-
-
-// ================= EXPORT TEXTURE =================
-
-export function exportPainting(){
-
-const dataURL = paintCanvas.toDataURL()
-
-emit("painter:export", dataURL)
-
-return dataURL
+updateTexture()
 
 }
 
 
-// ================= BRUSH PRESETS =================
 
-export function brushPreset(type){
+// ================= EXPORT =================
 
-if(type === "soft"){
+export function exportTexture(){
 
-brushSize = 20
-
-}
-
-if(type === "fine"){
-
-brushSize = 5
-
-}
-
-if(type === "spray"){
-
-brushSize = 30
-
-}
-
-}
-
-
-// ================= RANDOM COLOR =================
-
-export function randomColor(){
-
-brushColor = "#" + Math.floor(Math.random()*16777215).toString(16)
+return paintCanvas.toDataURL("image/png")
 
 }
