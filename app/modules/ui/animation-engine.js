@@ -1,341 +1,171 @@
-// ================= IMPORT =================
+// modules/ui/animation-engine.js
 
-import { on } from "../core/events.js"
+import { EventBus } from "../core/events.js"
 
-
-// ================= GLOBAL =================
-
-const animations = new Map()
-
-
-
-// ================= INIT =================
+let animations = new Map()
 
 export function initAnimationEngine(){
 
-listenUIEvents()
+attachEvents()
 
 }
 
+function attachEvents(){
 
+EventBus.on("panelOpen",fadeIn)
 
-// ================= EVENT LISTENER =================
+EventBus.on("panelClose",fadeOut)
 
-function listenUIEvents(){
+EventBus.on("aiThinking",pulseElement)
 
-on("ui:scan:start", startScanPulse)
-
-on("ui:scan:complete", stopScanPulse)
-
-on("ui:card:reveal", animateCardReveal)
-
-on("ui:object:highlight", highlightObject)
-
-on("ui:loading:start", startLoading)
-
-on("ui:loading:stop", stopLoading)
+EventBus.on("scanStart",scanFlash)
 
 }
 
+export function fadeIn(element){
 
+if(!element) return
 
-// ================= SCAN PULSE =================
+element.style.opacity = 0
+element.style.display = "block"
 
-let scanPulseAnimation = null
+let opacity = 0
 
-function startScanPulse(){
+const step = ()=>{
 
-const el = document.getElementById("scan-button")
+opacity += 0.05
 
-if(!el) return
+element.style.opacity = opacity
 
-scanPulseAnimation = el.animate(
+if(opacity < 1){
 
-[
-{ transform:"scale(1)", boxShadow:"0 0 0px #00f7ff" },
-{ transform:"scale(1.08)", boxShadow:"0 0 30px #00f7ff" },
-{ transform:"scale(1)", boxShadow:"0 0 0px #00f7ff" }
-],
-
-{
-duration:1200,
-iterations:Infinity,
-easing:"ease-in-out"
-}
-
-)
-
-}
-
-
-
-function stopScanPulse(){
-
-if(scanPulseAnimation){
-
-scanPulseAnimation.cancel()
+requestAnimationFrame(step)
 
 }
 
 }
 
-
-
-// ================= CARD REVEAL =================
-
-function animateCardReveal(card){
-
-card.animate(
-
-[
-{ opacity:0, transform:"translateY(30px) scale(.96)" },
-{ opacity:1, transform:"translateY(0) scale(1)" }
-],
-
-{
-duration:420,
-easing:"cubic-bezier(.2,.8,.2,1)"
-}
-
-)
+requestAnimationFrame(step)
 
 }
 
+export function fadeOut(element){
 
+if(!element) return
 
-// ================= OBJECT HIGHLIGHT =================
+let opacity = 1
 
-function highlightObject(box){
+const step = ()=>{
 
-box.animate(
+opacity -= 0.05
 
-[
-{ outline:"2px solid transparent" },
-{ outline:"3px solid #00f7ff" },
-{ outline:"2px solid transparent" }
-],
+element.style.opacity = opacity
 
-{
-duration:800
-}
+if(opacity > 0){
 
-)
+requestAnimationFrame(step)
 
-}
+}else{
 
-
-
-// ================= LOADING SHIMMER =================
-
-let shimmerAnim
-
-function startLoading(){
-
-const el = document.getElementById("ai-loading")
-
-if(!el) return
-
-shimmerAnim = el.animate(
-
-[
-{ opacity:.2 },
-{ opacity:1 },
-{ opacity:.2 }
-],
-
-{
-duration:900,
-iterations:Infinity
-}
-
-)
-
-}
-
-
-
-function stopLoading(){
-
-if(shimmerAnim){
-
-shimmerAnim.cancel()
+element.style.display = "none"
 
 }
 
 }
 
-
-
-// ================= FLOAT ANIMATION =================
-
-export function floatElement(el){
-
-el.animate(
-
-[
-{ transform:"translateY(0px)" },
-{ transform:"translateY(-8px)" },
-{ transform:"translateY(0px)" }
-],
-
-{
-duration:2000,
-iterations:Infinity,
-easing:"ease-in-out"
-}
-
-)
+requestAnimationFrame(step)
 
 }
 
+export function slideUp(element){
 
+if(!element) return
 
-// ================= BUBBLE POP =================
+element.style.transform = "translateY(40px)"
+element.style.opacity = 0
+element.style.display = "block"
 
-export function bubblePop(el){
+let y = 40
+let opacity = 0
 
-el.animate(
+const step = ()=>{
 
-[
-{ transform:"scale(.9)", opacity:.5 },
-{ transform:"scale(1.1)", opacity:1 },
-{ transform:"scale(1)", opacity:1 }
-],
+y -= 2
+opacity += 0.05
 
-{
-duration:300,
-easing:"ease-out"
-}
+element.style.transform = `translateY(${y}px)`
+element.style.opacity = opacity
 
-)
+if(opacity < 1){
 
-}
-
-
-
-// ================= SMOOTH FADE =================
-
-export function fadeIn(el){
-
-el.animate(
-
-[
-{ opacity:0 },
-{ opacity:1 }
-],
-
-{
-duration:350
-}
-
-)
+requestAnimationFrame(step)
 
 }
 
-
-
-export function fadeOut(el){
-
-el.animate(
-
-[
-{ opacity:1 },
-{ opacity:0 }
-],
-
-{
-duration:300
 }
 
-)
+requestAnimationFrame(step)
 
 }
 
+export function pulseElement(){
 
+const loader = document.querySelector(".ai-spinner")
 
-// ================= OBJECT SCAN LINE =================
+if(!loader) return
 
-export function scanLineAnimation(container){
+loader.classList.add("pulse")
 
-const line = document.createElement("div")
+setTimeout(()=>{
 
-line.className = "scan-line"
+loader.classList.remove("pulse")
 
-container.appendChild(line)
-
-line.animate(
-
-[
-{ transform:"translateY(0)" },
-{ transform:"translateY(100%)" }
-],
-
-{
-duration:1500,
-iterations:Infinity
-}
-
-)
+},1200)
 
 }
 
+export function scanFlash(){
 
+const overlay = document.querySelector(".scan-overlay-canvas")
 
-// ================= 3D PANEL ROTATION =================
+if(!overlay) return
 
-export function rotatePanel(el){
+overlay.classList.add("scan-flash")
 
-el.animate(
+setTimeout(()=>{
 
-[
-{ transform:"rotateY(0deg)" },
-{ transform:"rotateY(8deg)" },
-{ transform:"rotateY(0deg)" }
-],
+overlay.classList.remove("scan-flash")
 
-{
-duration:2500,
-iterations:Infinity
-}
-
-)
+},300)
 
 }
 
+export function animateScale(element){
 
+if(!element) return
 
-// ================= PARTICLE BURST =================
+element.style.transform = "scale(0.8)"
+element.style.opacity = 0
 
-export function particleBurst(x,y){
+let scale = 0.8
+let opacity = 0
 
-const particleCount = 10
+const step = ()=>{
 
-for(let i=0;i<particleCount;i++){
+scale += 0.02
+opacity += 0.05
 
-const p = document.createElement("div")
+element.style.transform = `scale(${scale})`
+element.style.opacity = opacity
 
-p.className = "ui-particle"
+if(opacity < 1){
 
-p.style.left = x+"px"
-p.style.top = y+"px"
-
-document.body.appendChild(p)
-
-p.animate(
-
-[
-{ transform:"translate(0,0)", opacity:1 },
-{ transform:`translate(${Math.random()*80-40}px,${Math.random()*80-40}px)`, opacity:0 }
-],
-
-{
-duration:700
-}
-
-)
-
-setTimeout(()=>p.remove(),700)
+requestAnimationFrame(step)
 
 }
+
+}
+
+requestAnimationFrame(step)
 
 }
