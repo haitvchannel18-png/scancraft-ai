@@ -4,70 +4,99 @@
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>ScanCraft AI</title>
 
+<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f172a">
 
-<link rel="manifest" href="./manifest.json">
+<link rel="stylesheet" href="style.css">
 
-<link rel="stylesheet" href="./style.css">
+<link rel="icon" href="icons/icon-192.png">
 
 </head>
 
-
 <body>
 
-<div id="app">
+<div id="app-root">
 
-<!-- ================= HEADER ================= -->
+<!-- Top Navigation -->
 
-<header id="topbar">
+<header id="top-bar">
 
 <div class="logo">
 ScanCraft AI
 </div>
 
-<div class="top-actions">
+<div class="status-indicators">
 
-<button id="voiceToggle">🎤</button>
-
-<button id="settingsBtn">⚙</button>
+<div id="ai-status">AI Ready</div>
+<div id="network-status">Online</div>
 
 </div>
 
 </header>
 
 
-<!-- ================= CAMERA SCAN AREA ================= -->
+<!-- Camera Scan Area -->
 
-<section id="scan-area">
+<section id="camera-section">
 
-<div id="camera-container">
+<video id="camera-stream" autoplay playsinline></video>
 
-<video id="camera" autoplay playsinline></video>
+<canvas id="scan-canvas"></canvas>
 
-<canvas id="overlay"></canvas>
+<div id="scan-overlay"></div>
 
-<div id="scan-overlay">
-
-<div class="scan-grid"></div>
-
-<div id="scan-status">
-Scanning environment...
+<div id="scan-animation">
+<div class="scan-line"></div>
 </div>
 
-</div>
+<button id="scan-button">
+SCAN
+</button>
+
+</section>
+
+
+<!-- Voice Bubble -->
+
+<div id="voice-bubble">
+
+<div class="voice-wave"></div>
+<div class="voice-wave"></div>
+<div class="voice-wave"></div>
 
 </div>
 
-<div id="scan-controls">
 
-<button id="scanBtn" class="primary-btn">
+<!-- AI Chat Panel -->
 
-<span>Scan Object</span>
+<section id="ai-chat-panel">
 
+<div id="chat-header">
+
+AI Object Assistant
+
+</div>
+
+<div id="chat-messages"></div>
+
+<div id="chat-input-area">
+
+<input 
+id="chat-input"
+type="text"
+placeholder="Ask anything about the object..."
+>
+
+<button id="send-btn">
+Send
+</button>
+
+<button id="voice-btn">
+🎤
 </button>
 
 </div>
@@ -75,152 +104,105 @@ Scanning environment...
 </section>
 
 
-<!-- ================= OBJECT RESULT PANEL ================= -->
+<!-- Object Information Panel -->
 
-<section id="result-panel" class="hidden">
+<section id="object-panel">
 
-<div id="object-card">
-
-<div class="object-image">
-
-<img id="objectPreview">
-
+<div id="object-title">
+Detected Object
 </div>
 
-<div class="object-info">
+<div id="object-images"></div>
 
-<h2 id="objectName"></h2>
+<div id="object-info"></div>
 
-<p id="objectConfidence"></p>
+<div id="object-actions">
 
-</div>
+<button id="view-3d-btn">
+View 3D
+</button>
 
-</div>
+<button id="edit-object-btn">
+Edit Object
+</button>
 
-
-<div id="result-tabs">
-
-<button data-tab="ai">AI Explain</button>
-
-<button data-tab="similar">Similar</button>
-
-<button data-tab="history">History</button>
-
-<button data-tab="buy">Buy</button>
-
-<button data-tab="edit">Edit</button>
-
-</div>
-
-
-<div id="result-content">
-
-<div id="ai-panel" class="result-tab">
-
-<div id="ai-chat"></div>
-
-<div id="ai-input">
-
-<input id="aiQuestion" placeholder="Ask AI about this object">
-
-<button id="askBtn">Ask</button>
-
-</div>
-
-</div>
-
-
-<div id="similar-panel" class="result-tab hidden">
-
-<div id="similarGallery"></div>
-
-</div>
-
-
-<div id="history-panel" class="result-tab hidden">
-
-<div id="historyContent"></div>
-
-</div>
-
-
-<div id="buy-panel" class="result-tab hidden">
-
-<div id="priceList"></div>
-
-</div>
-
-
-<div id="edit-panel" class="result-tab hidden">
-
-<div id="viewerContainer">
-
-<canvas id="viewerCanvas"></canvas>
-
-</div>
-
-<div id="editor-tools"></div>
-
-</div>
+<button id="buy-object-btn">
+Buy
+</button>
 
 </div>
 
 </section>
 
 
-<!-- ================= VOICE INTERACTION ================= -->
+<!-- 3D Viewer -->
 
-<div id="voice-ui" class="hidden">
+<section id="viewer-section">
 
-<div id="voice-bubble">
+<canvas id="viewer-canvas"></canvas>
 
-<div class="wave"></div>
-<div class="wave"></div>
-<div class="wave"></div>
+<div id="viewer-tools">
+
+<button id="paint-tool">
+Paint
+</button>
+
+<button id="texture-tool">
+Texture
+</button>
+
+<button id="sketch-tool">
+Sketch
+</button>
+
+<button id="export-tool">
+Export
+</button>
 
 </div>
 
-<div id="voice-status">
-
-Listening...
-
-</div>
-
-</div>
+</section>
 
 
-<!-- ================= LOADING SCREEN ================= -->
+<!-- Loading Visuals -->
 
 <div id="loading-screen">
 
-<div class="loader">
+<div class="loader"></div>
 
-<div class="loader-ring"></div>
-
-<p>Initializing AI Engine...</p>
-
+<div id="loading-text">
+Initializing AI Engine...
 </div>
 
 </div>
 
+
+<!-- Notification Toast -->
+
+<div id="toast"></div>
+
+
 </div>
 
 
-<!-- ================= SERVICE WORKER ================= -->
+<!-- Scripts -->
+
+<script type="module" src="app.js"></script>
 
 <script>
 
 if ("serviceWorker" in navigator) {
-navigator.serviceWorker.register("./service-worker.js")
+
+window.addEventListener("load", () => {
+
+navigator.serviceWorker.register("service-worker.js")
+
+})
+
 }
 
 </script>
 
 
-<!-- ================= APP BOOT ================= -->
-
-<script type="module" src="./app.js"></script>
-
 </body>
-
 </html>
