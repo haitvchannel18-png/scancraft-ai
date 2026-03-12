@@ -1,17 +1,26 @@
-// ================= IMPORTS =================
+// modules/camera/camera.js
 
-import { startStreamProcessor } from "../core/pipeline.js"
-import { emit } from "../core/events.js"
+import { EventBus } from "../core/events.js"
 
-
-// ================= STATE =================
-
+let stream = null
 let videoElement = null
-let mediaStream = null
-let activeDevice = null
+let currentFacing = "environment"
 
+const constraints = {
 
-// ================= CAMERA START =================
+video: {
+facingMode: currentFacing,
+width: { ideal: 1280 },
+height: { ideal: 720 },
+focusMode: "continuous",
+exposureMode: "continuous",
+whiteBalanceMode: "continuous"
+},
+
+audio: false
+
+}
+
 
 export async function startCamera(video){
 
@@ -19,120 +28,77 @@ videoElement = video
 
 try{
 
-const device = await getBestCamera()
+stream = await navigator.mediaDevices.getUserMedia(constraints)
 
-const constraints = {
+video.srcObject = stream
 
-video:{
+await video.play()
 
-deviceId: device.deviceId,
-
-width:{ ideal:1920 },
-height:{ ideal:1080 },
-
-facingMode:"environment",
-
-focusMode:"continuous",
-
-exposureMode:"continuous"
-
-},
-
-audio:false
-
-}
-
-mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
-
-videoElement.srcObject = mediaStream
-
-await videoElement.play()
-
-activeDevice = device
-
-emit("camera:started", device.label)
-
-startStreamProcessor(videoElement)
+EventBus.emit("cameraStarted")
 
 }catch(err){
 
-console.error("Camera start failed", err)
+console.error("Camera error:",err)
 
-emit("camera:error", err)
-
-}
+EventBus.emit("cameraError",err)
 
 }
 
+}
 
-// ================= CAMERA STOP =================
+
 
 export function stopCamera(){
 
-if(!mediaStream) return
+if(!stream) return
 
-mediaStream.getTracks().forEach(track => track.stop())
+stream.getTracks().forEach(track=>track.stop())
 
-emit("camera:stopped")
-
-}
-
-
-// ================= DEVICE SELECT =================
-
-async function getBestCamera(){
-
-const devices = await navigator.mediaDevices.enumerateDevices()
-
-const cameras = devices.filter(d => d.kind === "videoinput")
-
-// prefer back camera
-
-let backCamera = cameras.find(c =>
-
-c.label.toLowerCase().includes("back") ||
-c.label.toLowerCase().includes("rear")
-)
-
-return backCamera || cameras[0]
+EventBus.emit("cameraStopped")
 
 }
 
 
-// ================= CAMERA SWITCH =================
 
 export async function switchCamera(){
 
 if(!videoElement) return
 
-const devices = await navigator.mediaDevices.enumerateDevices()
-
-const cameras = devices.filter(d => d.kind === "videoinput")
-
-const index = cameras.findIndex(d => d.deviceId === activeDevice.deviceId)
-
-const next = cameras[(index+1) % cameras.length]
+currentFacing = currentFacing === "environment"
+? "user"
+: "environment"
 
 stopCamera()
 
-await startCamera(videoElement, next)
+constraints.video.facingMode = currentFacing
 
-emit("camera:switched", next.label)
+await startCamera(videoElement)
+
+EventBus.emit("cameraSwitched",currentFacing)
+
+}
+
+
+
+export function captureFrame(canvas){
+
+if(!videoElement) return null
+
+const ctx = canvas.getContext("2d")
+
+canvas.width = videoElement.videoWidth
+canvas.height = videoElement.videoHeight
+
+ctx.drawImage(videoElement,0,0,canvas.width,canvas.height)
+
+return canvas
 
 }
 
 
-// ================= CAMERA INFO =================
 
-export function getCameraInfo(){
+export function getStream(){
 
-if(!activeDevice) return null
-
-return{
-
-label: activeDevice.label,
-id: activeDevice.deviceId
-
-}
+return stream
 
 }
