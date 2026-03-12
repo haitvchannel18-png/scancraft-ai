@@ -1,44 +1,57 @@
-// ================= IMPORT =================
+// modules/vision/reasoning-stage.js
 
-import { runVisualReasoning } from "../ai/visual-reasoning.js"
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
+import { runReasoningEngine } from "../ai/reasoning-engine.js"
+import { rankResults } from "../reasoning/result-ranker.js"
 
-
-
-// ================= CONFIG =================
-
-const MIN_CONFIDENCE = CONFIG.REASONING_THRESHOLD || 0.4
-
-
-
-// ================= MAIN STAGE =================
+const CONFIDENCE_THRESHOLD = 0.35
 
 export async function runReasoningStage(input){
 
 try{
 
-emit("vision:reasoning:start")
+EventBus.emit("visionStageStart","reasoning")
+
+const { detection, logoResults, similarityResults } = input
+
+if(!detection || detection.length === 0){
+return []
+}
 
 const results = []
 
-for(const item of input){
+for(const obj of detection){
 
-const reasoning = await processReasoning(item)
+const brand = findBrandForObject(obj,logoResults)
+
+const similar = findSimilarForObject(obj,similarityResults)
+
+const reasoningInput = {
+label: obj.label,
+confidence: obj.confidence,
+brand,
+similar
+}
+
+const reasoning = await runReasoningEngine(reasoningInput)
 
 results.push(reasoning)
 
 }
 
-emit("vision:reasoning:complete", results)
+const ranked = rankResults(results)
 
-return results
+const filtered = ranked.filter(r => r.confidence >= CONFIDENCE_THRESHOLD)
+
+EventBus.emit("visionReasoningComplete",filtered)
+
+return filtered
 
 }catch(err){
 
-console.error("Reasoning stage failed", err)
+console.error("Reasoning stage error",err)
 
-emit("vision:reasoning:error")
+EventBus.emit("visionReasoningError",err)
 
 return []
 
@@ -48,114 +61,36 @@ return []
 
 
 
-// ================= PROCESS =================
+function findBrandForObject(object, logos){
 
-async function processReasoning(item){
+if(!logos) return null
 
-const object = item.object
-const brand = item.brand
-const similarity = item.bestMatch
+for(const logo of logos){
 
-const reasoning = await runVisualReasoning({
-
-object,
-brand,
-similarity
-
-})
-
-const confidence = computeConfidence(item)
-
-return {
-
-object,
-
-brand: brand || null,
-
-guess: similarity?.label || object,
-
-confidence,
-
-category: reasoning.category,
-
-purpose: reasoning.purpose,
-
-description: reasoning.description,
-
-attributes: reasoning.attributes,
-
-context: reasoning.context
+if(logo.object === object.label){
+return logo.brand
+}
 
 }
+
+return null
 
 }
 
 
 
-// ================= CONFIDENCE =================
+function findSimilarForObject(object, similarity){
 
-function computeConfidence(item){
+if(!similarity) return []
 
-let score = 0
+for(const item of similarity){
 
-if(item.brand){
-
-score += 0.3
+if(item.object === object.label){
+return item.similar
+}
 
 }
 
-if(item.bestMatch){
-
-score += item.bestMatch.score * 0.5
-
-}
-
-if(item.object){
-
-score += 0.2
-
-}
-
-return Math.min(score,1)
-
-}
-
-
-
-// ================= SUMMARY =================
-
-export function reasoningSummary(results){
-
-return results.map(r => {
-
-return `${r.guess} (${(r.confidence*100).toFixed(0)}%)`
-
-})
-
-}
-
-
-
-// ================= FILTER =================
-
-export function filterLowConfidence(results){
-
-return results.filter(r => r.confidence >= MIN_CONFIDENCE)
-
-}
-
-
-
-// ================= PRIMARY RESULT =================
-
-export function getPrimaryReasoning(results){
-
-if(!results || results.length === 0) return null
-
-return results.reduce((best,current)=>{
-
-return current.confidence > best.confidence ? current : best
-
-})
+return []
 
 }
