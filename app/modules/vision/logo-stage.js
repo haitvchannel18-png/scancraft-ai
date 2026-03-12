@@ -1,59 +1,35 @@
-// ================= IMPORT =================
+// modules/vision/logo-stage.js
 
-import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { searchSimilarImages } from "../vision-search/image-search.js"
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
+import { detectLogos } from "../detection/logo-detector.js"
 
+const LOGO_CONFIDENCE = 0.4
 
-
-// ================= CONFIG =================
-
-const LOGO_SIMILARITY_THRESHOLD = CONFIG.LOGO_THRESHOLD || 0.75
-const MAX_LOGO_RESULTS = CONFIG.MAX_LOGO_RESULTS || 5
-
-
-
-// ================= MAIN STAGE =================
-
-export async function runLogoStage(frame, detections){
+export async function runLogoStage(frame, objects){
 
 try{
 
-emit("vision:logo:start")
+EventBus.emit("visionStageStart","logo")
 
-const results = []
+const logos = await detectLogos(frame)
 
-for(const object of detections){
-
-const crop = cropObject(frame, object)
-
-const features = await extractFeatures(crop)
-
-const matches = await searchSimilarImages(features)
-
-const brand = identifyBrand(matches)
-
-results.push({
-
-object: object.label,
-brand: brand?.name || null,
-confidence: brand?.confidence || 0,
-matches: matches.slice(0, MAX_LOGO_RESULTS)
-
-})
-
+if(!logos || logos.length === 0){
+return []
 }
 
-emit("vision:logo:complete", results)
+const filtered = logos.filter(l=>l.score >= LOGO_CONFIDENCE)
 
-return results
+const mapped = mapLogosToObjects(filtered, objects)
+
+EventBus.emit("visionLogoDetected",mapped)
+
+return mapped
 
 }catch(err){
 
-console.error("Logo stage error", err)
+console.error("Logo stage error",err)
 
-emit("vision:logo:error")
+EventBus.emit("visionLogoError",err)
 
 return []
 
@@ -63,111 +39,49 @@ return []
 
 
 
-// ================= CROP OBJECT =================
+function mapLogosToObjects(logos, objects){
 
-function cropObject(frame, object){
+if(!objects || objects.length === 0) return logos
 
-const canvas = document.createElement("canvas")
+const results = []
 
-const ctx = canvas.getContext("2d")
+logos.forEach(logo=>{
 
-const width = frame.videoWidth || frame.width
-const height = frame.videoHeight || frame.height
+const [lx,ly,lw,lh] = logo.bbox
 
-canvas.width = object.width * width
-canvas.height = object.height * height
+const logoCenterX = lx + lw/2
+const logoCenterY = ly + lh/2
 
-ctx.drawImage(
+let matchedObject = null
 
-frame,
+objects.forEach(obj=>{
 
-object.x * width,
-object.y * height,
-object.width * width,
-object.height * height,
+const {x,y,width,height} = obj.bbox
 
-0,
-0,
-canvas.width,
-canvas.height
+if(
+logoCenterX > x &&
+logoCenterX < x + width &&
+logoCenterY > y &&
+logoCenterY < y + height
+){
 
-)
-
-return canvas
+matchedObject = obj.label
 
 }
-
-
-
-// ================= BRAND IDENTIFICATION =================
-
-function identifyBrand(matches){
-
-if(!matches || matches.length === 0){
-
-return null
-
-}
-
-const best = matches[0]
-
-if(best.score < LOGO_SIMILARITY_THRESHOLD){
-
-return null
-
-}
-
-return {
-
-name: best.label,
-confidence: best.score
-
-}
-
-}
-
-
-
-// ================= BRAND SUMMARY =================
-
-export function logoSummary(results){
-
-return results.map(r => {
-
-if(!r.brand){
-
-return `${r.object} (unknown brand)`
-
-}
-
-return `${r.object} → ${r.brand} ${(r.confidence*100).toFixed(0)}%`
 
 })
 
-}
+results.push({
 
-
-
-// ================= FILTER BRANDS =================
-
-export function filterKnownBrands(results){
-
-return results.filter(r => r.brand !== null)
-
-}
-
-
-
-// ================= GET PRIMARY BRAND =================
-
-export function getPrimaryBrand(results){
-
-if(!results.length) return null
-
-return results.reduce((best,current)=>{
-
-return current.confidence > best.confidence ? current : best
+brand: logo.label || "unknown",
+confidence: logo.score,
+bbox: logo.bbox,
+object: matchedObject
 
 })
+
+})
+
+return results
 
 }
