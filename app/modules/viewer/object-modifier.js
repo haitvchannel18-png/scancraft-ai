@@ -1,176 +1,160 @@
-// ================= IMPORT =================
+// modules/viewer/object-modifier.js
 
-import { on, emit } from "../core/events.js"
-import { getCurrentModel } from "./viewer.js"
-import { playTextureSound } from "../audio/editor-sounds.js"
+import { EventBus } from "../core/events.js"
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
+let THREE = window.THREE
 
+let scene = null
+let selectedObject = null
 
+export function initObjectModifier(viewerScene){
 
-// ================= GLOBAL =================
+scene = viewerScene
 
-let targetObject = null
-
-
-
-// ================= INIT =================
-
-export function initObjectModifier(){
-
-listenModifierEvents()
+EventBus.emit("objectModifierReady")
 
 }
 
 
 
-// ================= EVENTS =================
+export function selectObject(object){
 
-function listenModifierEvents(){
+selectedObject = object
 
-on("object:modify:scale", scaleObject)
-on("object:modify:rotate", rotateObject)
-on("object:modify:move", moveObject)
-on("object:modify:duplicate", duplicateObject)
-on("object:modify:reset", resetObject)
+EventBus.emit("objectSelected",object)
 
 }
 
 
 
-// ================= GET TARGET =================
+export function moveObject(x,y,z){
 
-function getTarget(){
+if(!selectedObject) return
 
-const model = getCurrentModel()
+selectedObject.position.x += x
+selectedObject.position.y += y
+selectedObject.position.z += z
 
-if(!model) return null
-
-targetObject = model
-
-return targetObject
+EventBus.emit("objectMoved",selectedObject)
 
 }
 
 
 
-// ================= SCALE =================
+export function rotateObject(rx,ry,rz){
 
-function scaleObject(data){
+if(!selectedObject) return
 
-const obj = getTarget()
+selectedObject.rotation.x += rx
+selectedObject.rotation.y += ry
+selectedObject.rotation.z += rz
 
-if(!obj) return
-
-const factor = data?.factor || 1.2
-
-obj.scale.multiplyScalar(factor)
-
-emit("object:scaled", obj)
-
-playTextureSound()
+EventBus.emit("objectRotated",selectedObject)
 
 }
 
 
 
-// ================= ROTATE =================
+export function scaleObject(scale){
 
-function rotateObject(data){
+if(!selectedObject) return
 
-const obj = getTarget()
+selectedObject.scale.set(
+selectedObject.scale.x * scale,
+selectedObject.scale.y * scale,
+selectedObject.scale.z * scale
+)
 
-if(!obj) return
-
-const axis = data?.axis || "y"
-const angle = data?.angle || 0.3
-
-obj.rotation[axis] += angle
-
-emit("object:rotated", obj)
-
-playTextureSound()
+EventBus.emit("objectScaled",selectedObject)
 
 }
 
 
 
-// ================= MOVE =================
+export function setScale(x,y,z){
 
-function moveObject(data){
+if(!selectedObject) return
 
-const obj = getTarget()
+selectedObject.scale.set(x,y,z)
 
-if(!obj) return
-
-obj.position.x += data?.x || 0
-obj.position.y += data?.y || 0
-obj.position.z += data?.z || 0
-
-emit("object:moved", obj)
-
-playTextureSound()
+EventBus.emit("objectScaled",selectedObject)
 
 }
 
 
 
-// ================= DUPLICATE =================
+export function duplicateObject(){
 
-function duplicateObject(){
+if(!selectedObject || !scene) return
 
-const obj = getTarget()
+const clone = selectedObject.clone()
 
-if(!obj) return
+clone.position.x += 0.2
 
-const clone = obj.clone(true)
+scene.add(clone)
 
-clone.position.x += 1
+EventBus.emit("objectDuplicated",clone)
 
-obj.parent.add(clone)
-
-emit("object:duplicated", clone)
-
-playTextureSound()
+return clone
 
 }
 
 
 
-// ================= RESET =================
+export function deleteObject(){
 
-function resetObject(){
+if(!selectedObject || !scene) return
 
-const obj = getTarget()
+scene.remove(selectedObject)
 
-if(!obj) return
+EventBus.emit("objectDeleted",selectedObject)
 
-obj.position.set(0,0,0)
-
-obj.rotation.set(0,0,0)
-
-obj.scale.set(1,1,1)
-
-emit("object:reset", obj)
+selectedObject = null
 
 }
 
 
 
-// ================= EXPORT TRANSFORM =================
+export function resetTransform(){
 
-export function getObjectTransform(){
+if(!selectedObject) return
 
-const obj = getTarget()
+selectedObject.position.set(0,0,0)
+selectedObject.rotation.set(0,0,0)
+selectedObject.scale.set(1,1,1)
 
-if(!obj) return null
-
-return {
-
-position: obj.position.clone(),
-rotation: obj.rotation.clone(),
-scale: obj.scale.clone()
+EventBus.emit("objectReset",selectedObject)
 
 }
+
+
+
+export function getSelectedObject(){
+
+return selectedObject
+
+}
+
+
+
+export function setPosition(x,y,z){
+
+if(!selectedObject) return
+
+selectedObject.position.set(x,y,z)
+
+EventBus.emit("objectMoved",selectedObject)
+
+}
+
+
+
+export function setRotation(x,y,z){
+
+if(!selectedObject) return
+
+selectedObject.rotation.set(x,y,z)
+
+EventBus.emit("objectRotated",selectedObject)
 
 }
