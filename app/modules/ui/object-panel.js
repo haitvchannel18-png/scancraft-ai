@@ -1,182 +1,111 @@
-// ================= IMPORT =================
+// modules/ui/object-panel.js
 
-import { on, emit } from "../core/events.js"
-import { animateCardReveal } from "./animation-engine.js"
-
-
-
-// ================= GLOBAL =================
+import { EventBus } from "../core/events.js"
 
 let panel
-let selectedObject = null
+let titleEl
+let descriptionEl
+let imageEl
+let buttons = {}
 
+export function initObjectPanel(containerId="object-panel"){
 
+const container = document.getElementById(containerId)
 
-// ================= INIT =================
+panel = document.createElement("div")
+panel.className = "object-panel"
 
-export function initObjectPanel(){
+titleEl = document.createElement("h2")
+descriptionEl = document.createElement("p")
 
-panel = document.getElementById("object-panel")
+imageEl = document.createElement("img")
+imageEl.className = "object-image"
 
-if(!panel) return
+const btnContainer = document.createElement("div")
+btnContainer.className = "object-buttons"
 
-panel.addEventListener("click", handlePanelClick)
+buttons.view3D = createButton("3D View","objectView3D")
+buttons.paint = createButton("Paint","objectPaint")
+buttons.buy = createButton("Buy","objectBuy")
+buttons.history = createButton("History","objectHistory")
 
-listenObjectEvents()
+btnContainer.appendChild(buttons.view3D)
+btnContainer.appendChild(buttons.paint)
+btnContainer.appendChild(buttons.buy)
+btnContainer.appendChild(buttons.history)
 
-}
+panel.appendChild(imageEl)
+panel.appendChild(titleEl)
+panel.appendChild(descriptionEl)
+panel.appendChild(btnContainer)
 
+container.appendChild(panel)
 
+attachEvents()
 
-// ================= LISTEN EVENTS =================
-
-function listenObjectEvents(){
-
-on("object:selected", object => {
-
-selectedObject = object
-
-openPanel(object)
-
-})
-
-}
-
-
-
-// ================= OPEN PANEL =================
-
-function openPanel(object){
-
-if(!panel) return
-
-panel.style.display = "flex"
-
-panel.innerHTML = generatePanelHTML(object)
-
-animateCardReveal(panel)
+hidePanel()
 
 }
 
+function createButton(label,eventName){
 
+const btn = document.createElement("button")
+btn.textContent = label
 
-// ================= CLOSE PANEL =================
+btn.onclick = () => {
 
-export function closeObjectPanel(){
+EventBus.emit(eventName)
+
+}
+
+return btn
+
+}
+
+function attachEvents(){
+
+EventBus.on("objectDetected",showObject)
+
+EventBus.on("objectPanelHide",hidePanel)
+
+}
+
+function showObject(data){
+
+if(!data) return
+
+titleEl.textContent = data.label || "Unknown Object"
+
+descriptionEl.textContent = data.description || "No description available"
+
+if(data.image){
+imageEl.src = data.image
+imageEl.style.display = "block"
+}else{
+imageEl.style.display = "none"
+}
+
+panel.style.display = "block"
+
+}
+
+export function hidePanel(){
 
 if(panel){
-
 panel.style.display = "none"
-
 }
 
 }
 
+export function updateDescription(text){
 
-
-// ================= PANEL HTML =================
-
-function generatePanelHTML(object){
-
-return `
-
-<div class="panel-header">
-<div class="panel-title">${escapeHTML(object.label)}</div>
-<div class="panel-close" data-action="close">✕</div>
-</div>
-
-<div class="panel-actions">
-
-<button data-action="explain">🧠 AI Explain</button>
-
-<button data-action="view3d">🧊 3D View</button>
-
-<button data-action="paint">🎨 Paint</button>
-
-<button data-action="buy">🛒 Buy</button>
-
-<button data-action="compare">📊 Compare</button>
-
-</div>
-
-`
+descriptionEl.textContent = text
 
 }
 
+export function updateImage(url){
 
-
-// ================= HANDLE CLICK =================
-
-function handlePanelClick(e){
-
-const action = e.target.dataset.action
-
-if(!action) return
-
-
-
-switch(action){
-
-case "close":
-
-closeObjectPanel()
-
-break
-
-
-
-case "explain":
-
-emit("ai:explain-object", selectedObject)
-
-break
-
-
-
-case "view3d":
-
-emit("viewer:open", selectedObject)
-
-break
-
-
-
-case "paint":
-
-emit("painter:open", selectedObject)
-
-break
-
-
-
-case "buy":
-
-emit("commerce:search", selectedObject)
-
-break
-
-
-
-case "compare":
-
-emit("commerce:compare", selectedObject)
-
-break
-
-}
-
-}
-
-
-
-// ================= SECURITY =================
-
-function escapeHTML(text){
-
-const div = document.createElement("div")
-
-div.innerText = text
-
-return div.innerHTML
+imageEl.src = url
+imageEl.style.display = "block"
 
 }
