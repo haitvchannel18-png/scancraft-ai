@@ -1,177 +1,135 @@
-// ================= IMPORT =================
+// modules/ui/scan-overlay.js
 
-import { on, emit } from "../core/events.js"
-import { highlightObject } from "./animation-engine.js"
+import { EventBus } from "../core/events.js"
 
-
-
-// ================= GLOBAL =================
-
-let overlayCanvas
+let canvas
 let ctx
-let detectedObjects = []
-let videoElement
+let container
 
+let boxes = []
+let scanActive = false
 
+export function initScanOverlay(containerId="scan-overlay"){
 
-// ================= INIT =================
+container = document.getElementById(containerId)
 
-export function initScanOverlay(video){
+canvas = document.createElement("canvas")
+canvas.className = "scan-overlay-canvas"
 
-videoElement = video
+ctx = canvas.getContext("2d")
 
-overlayCanvas = document.getElementById("scan-overlay")
+container.appendChild(canvas)
 
-ctx = overlayCanvas.getContext("2d")
+resize()
 
-resizeCanvas()
+window.addEventListener("resize",resize)
 
-window.addEventListener("resize", resizeCanvas)
-
-overlayCanvas.addEventListener("click", handleTap)
-
-listenDetectionEvents()
-
-}
-
-
-
-// ================= RESIZE =================
-
-function resizeCanvas(){
-
-overlayCanvas.width = overlayCanvas.offsetWidth
-overlayCanvas.height = overlayCanvas.offsetHeight
+attachEvents()
 
 }
 
+function resize(){
 
+canvas.width = container.offsetWidth
+canvas.height = container.offsetHeight
 
-// ================= LISTEN DETECTION =================
+}
 
-function listenDetectionEvents(){
+function attachEvents(){
 
-on("vision:detections", objects => {
+EventBus.on("detectionResults",renderBoxes)
 
-detectedObjects = objects
+EventBus.on("scanStart",startScan)
 
-drawBoundingBoxes()
+EventBus.on("scanStop",stopScan)
+
+}
+
+function startScan(){
+
+scanActive = true
+
+animateScan()
+
+}
+
+function stopScan(){
+
+scanActive = false
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+}
+
+function renderBoxes(detections){
+
+boxes = detections
+
+draw()
+
+}
+
+function draw(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+boxes.forEach(box=>{
+
+drawBox(box)
 
 })
 
 }
 
+function drawBox(box){
 
+const {x,y,width,height,label,confidence} = box
 
-// ================= DRAW BOXES =================
-
-function drawBoundingBoxes(){
-
-ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height)
-
-detectedObjects.forEach(obj => {
-
-const {x,y,width,height,label,score} = obj
-
-drawBox(x,y,width,height,label,score)
-
-})
-
-}
-
-
-
-// ================= DRAW SINGLE BOX =================
-
-function drawBox(x,y,width,height,label,score){
-
-ctx.strokeStyle = "#00f7ff"
+ctx.strokeStyle = "rgba(0,255,150,0.9)"
 ctx.lineWidth = 2
 
 ctx.strokeRect(x,y,width,height)
 
-ctx.fillStyle = "#00f7ff"
+ctx.fillStyle = "rgba(0,255,150,0.9)"
 ctx.font = "14px sans-serif"
 
-const text = `${label} ${(score*100).toFixed(0)}%`
+const text = `${label} ${(confidence*100).toFixed(1)}%`
 
-ctx.fillText(text,x+4,y-6)
-
-}
-
-
-
-// ================= TAP OBJECT =================
-
-function handleTap(e){
-
-const rect = overlayCanvas.getBoundingClientRect()
-
-const x = e.clientX - rect.left
-const y = e.clientY - rect.top
-
-const selected = detectedObjects.find(obj =>
-
-x >= obj.x &&
-x <= obj.x + obj.width &&
-y >= obj.y &&
-y <= obj.y + obj.height
-
-)
-
-if(selected){
-
-emit("object:selected", selected)
-
-showSelectionEffect(selected)
+ctx.fillText(text,x+6,y-6)
 
 }
 
-}
+function animateScan(){
 
+if(!scanActive) return
 
+ctx.clearRect(0,0,canvas.width,canvas.height)
 
-// ================= HIGHLIGHT =================
+const lineY = (Date.now()/6) % canvas.height
 
-function showSelectionEffect(obj){
+ctx.strokeStyle = "rgba(0,200,255,0.7)"
+ctx.lineWidth = 2
 
-const box = document.createElement("div")
+ctx.beginPath()
+ctx.moveTo(0,lineY)
+ctx.lineTo(canvas.width,lineY)
+ctx.stroke()
 
-box.className = "scan-highlight"
-
-box.style.left = obj.x + "px"
-box.style.top = obj.y + "px"
-box.style.width = obj.width + "px"
-box.style.height = obj.height + "px"
-
-overlayCanvas.parentElement.appendChild(box)
-
-highlightObject(box)
-
-setTimeout(()=>box.remove(),800)
+requestAnimationFrame(animateScan)
 
 }
 
+export function highlightObject(box){
 
+ctx.strokeStyle = "rgba(255,180,0,1)"
+ctx.lineWidth = 3
 
-// ================= CLEAR =================
+ctx.strokeRect(box.x,box.y,box.width,box.height)
+
+}
 
 export function clearOverlay(){
 
-ctx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height)
-
-detectedObjects = []
-
-}
-
-
-
-// ================= UPDATE =================
-
-export function updateOverlay(objects){
-
-detectedObjects = objects
-
-drawBoundingBoxes()
+ctx.clearRect(0,0,canvas.width,canvas.height)
 
 }
