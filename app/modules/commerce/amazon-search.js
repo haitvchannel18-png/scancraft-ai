@@ -1,131 +1,56 @@
-// ================= IMPORT =================
+// modules/commerce/amazon-search.js
 
-import { emit } from "../core/events.js"
-
-
-
-// ================= CONFIG =================
+import { EventBus } from "../core/events.js"
 
 const AMAZON_BASE = "https://www.amazon.com/s?k="
 
+export async function searchAmazon(objectLabel){
 
+if(!objectLabel) return null
 
-// ================= SEARCH AMAZON =================
+const query = encodeURIComponent(objectLabel)
 
-export async function searchAmazonProducts(object){
+const url = AMAZON_BASE + query
 
-emit("commerce:amazon-search:start")
-
-try{
-
-const query = encodeURIComponent(object.name)
-
-const searchURL = `${AMAZON_BASE}${query}`
+const priceRange = estimatePrice(objectLabel)
 
 const result = {
 
-object: object.name,
+marketplace:"Amazon",
 
-searchURL,
+query:objectLabel,
 
-estimatedPrice: estimatePrice(object),
+searchUrl:url,
 
-marketplace:"Amazon"
+price:priceRange,
+
+note:"Open link to view live marketplace results"
 
 }
 
-emit("commerce:amazon-search:complete", result)
+EventBus.emit("amazonSearchReady",result)
 
 return result
 
-}catch(err){
-
-console.error("Amazon search failed", err)
-
-emit("commerce:amazon-search:error")
-
-return null
-
-}
-
 }
 
 
 
-// ================= PRICE ESTIMATION =================
+function estimatePrice(label){
 
-function estimatePrice(object){
+const ranges = {
 
-const category = object.category?.toLowerCase()
-
-if(category === "electronics"){
-
-return "$50 - $300"
-
-}
-
-if(category === "mechanical"){
-
-return "$20 - $150"
+bottle:"$5 - $25",
+chair:"$40 - $200",
+laptop:"$500 - $2500",
+phone:"$200 - $1500",
+car:"$10000 - $80000"
 
 }
 
-if(category === "furniture"){
+const key = label.toLowerCase()
 
-return "$80 - $600"
+if(ranges[key]) return ranges[key]
 
-}
-
-return "$10 - $200"
-
-}
-
-
-
-// ================= PRODUCT LINK =================
-
-export function generateAmazonLink(productName){
-
-const query = encodeURIComponent(productName)
-
-return `${AMAZON_BASE}${query}`
-
-}
-
-
-
-// ================= MULTIPLE PRODUCTS =================
-
-export function generateAmazonProductList(objects){
-
-return objects.map(obj => ({
-
-name: obj.name,
-
-link: generateAmazonLink(obj.name),
-
-price: estimatePrice(obj)
-
-}))
-
-}
-
-
-
-// ================= PRODUCT DETAILS =================
-
-export function productSummary(object){
-
-return {
-
-title: object.name,
-
-marketplace: "Amazon",
-
-link: generateAmazonLink(object.name),
-
-priceRange: estimatePrice(object)
-
-}
-
+return "$10 - $500"
 }
