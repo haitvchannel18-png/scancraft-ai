@@ -1,4 +1,3 @@
-
 // modules/scene/scene-analyzer.js
 
 import { EventBus } from "../core/events.js"
