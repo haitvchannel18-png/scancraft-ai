@@ -1,56 +1,64 @@
-// ================= IMPORT =================
+// modules/viewer/painter.js
 
-import { on, emit } from "../core/events.js"
-import { playBrushSound } from "../audio/editor-sounds.js"
-import { getCurrentModel } from "./viewer.js"
+import { EventBus } from "../core/events.js"
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
-
-
-
-// ================= GLOBAL =================
+let THREE = window.THREE
 
 let paintCanvas
-let ctx
-let brushColor = "#ff0000"
-let brushSize = 20
-let painting = false
+let paintCtx
 let texture
-let meshTarget
+let targetMesh = null
 
+let painting = false
+let brushSize = 10
+let brushColor = "#ff0000"
+let opacity = 1
 
+export function initPainter(model){
 
-// ================= INIT =================
+targetMesh = findPaintableMesh(model)
 
-export function initPainter(){
+if(!targetMesh){
+console.warn("No paintable mesh found")
+return
+}
 
-paintCanvas = document.getElementById("paint-canvas")
+createTextureCanvas()
 
-if(!paintCanvas) return
+applyTexture()
 
-ctx = paintCanvas.getContext("2d")
-
-setupCanvas()
-
-listenPainterEvents()
-
-paintCanvas.addEventListener("mousedown", startPaint)
-paintCanvas.addEventListener("mousemove", paint)
-paintCanvas.addEventListener("mouseup", stopPaint)
+EventBus.emit("painterReady")
 
 }
 
 
 
-// ================= CANVAS =================
+function findPaintableMesh(model){
 
-function setupCanvas(){
+let mesh = null
 
+model.traverse(child=>{
+if(child.isMesh && !mesh){
+mesh = child
+}
+})
+
+return mesh
+
+}
+
+
+
+function createTextureCanvas(){
+
+paintCanvas = document.createElement("canvas")
 paintCanvas.width = 1024
 paintCanvas.height = 1024
 
-ctx.fillStyle = "#ffffff"
-ctx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
+paintCtx = paintCanvas.getContext("2d")
+
+paintCtx.fillStyle = "#ffffff"
+paintCtx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
 
 texture = new THREE.CanvasTexture(paintCanvas)
 
@@ -58,133 +66,108 @@ texture = new THREE.CanvasTexture(paintCanvas)
 
 
 
-// ================= EVENTS =================
+function applyTexture(){
 
-function listenPainterEvents(){
-
-on("painter:open", enablePainter)
-
-}
-
-
-
-// ================= ENABLE PAINTER =================
-
-function enablePainter(){
-
-const model = getCurrentModel()
-
-if(!model) return
-
-model.traverse(obj=>{
-
-if(obj.isMesh){
-
-meshTarget = obj
-
-applyTexture(obj)
-
-}
-
-})
-
-emit("painter:ready")
+targetMesh.material.map = texture
+targetMesh.material.needsUpdate = true
 
 }
 
 
 
-// ================= APPLY TEXTURE =================
+export function attachPainterControls(canvas){
 
-function applyTexture(mesh){
+canvas.addEventListener("mousedown",startPaint)
+canvas.addEventListener("mousemove",paint)
+canvas.addEventListener("mouseup",stopPaint)
 
-mesh.material.map = texture
-
-mesh.material.needsUpdate = true
+canvas.addEventListener("touchstart",startPaint)
+canvas.addEventListener("touchmove",paint)
+canvas.addEventListener("touchend",stopPaint)
 
 }
 
 
-
-// ================= START PAINT =================
 
 function startPaint(e){
 
 painting = true
 
-draw(e)
+const pos = getPointer(e)
+
+draw(pos.x,pos.y)
 
 }
 
 
-
-// ================= STOP PAINT =================
-
-function stopPaint(){
-
-painting = false
-
-ctx.beginPath()
-
-}
-
-
-
-// ================= DRAW =================
 
 function paint(e){
 
 if(!painting) return
 
-draw(e)
+const pos = getPointer(e)
+
+draw(pos.x,pos.y)
 
 }
 
 
 
-function draw(e){
+function stopPaint(){
 
-const rect = paintCanvas.getBoundingClientRect()
-
-const x = e.clientX - rect.left
-const y = e.clientY - rect.top
-
-ctx.lineWidth = brushSize
-ctx.lineCap = "round"
-ctx.strokeStyle = brushColor
-
-ctx.lineTo(x,y)
-ctx.stroke()
-ctx.beginPath()
-ctx.moveTo(x,y)
-
-playBrushSound()
-
-updateTexture()
+painting = false
 
 }
 
 
 
-// ================= UPDATE TEXTURE =================
+function draw(x,y){
 
-function updateTexture(){
+paintCtx.globalAlpha = opacity
+paintCtx.fillStyle = brushColor
 
-if(texture){
+paintCtx.beginPath()
+paintCtx.arc(x,y,brushSize,0,Math.PI*2)
+paintCtx.fill()
 
 texture.needsUpdate = true
 
-}
+EventBus.emit("paintStroke",{x,y})
 
 }
 
 
 
-// ================= BRUSH SETTINGS =================
+function getPointer(e){
+
+const rect = e.target.getBoundingClientRect()
+
+let x
+let y
+
+if(e.touches){
+
+x = e.touches[0].clientX - rect.left
+y = e.touches[0].clientY - rect.top
+
+}else{
+
+x = e.clientX - rect.left
+y = e.clientY - rect.top
+
+}
+
+return {x,y}
+
+}
+
+
 
 export function setBrushColor(color){
 
 brushColor = color
+
+EventBus.emit("brushColorChanged",color)
 
 }
 
@@ -194,27 +177,34 @@ export function setBrushSize(size){
 
 brushSize = size
 
+EventBus.emit("brushSizeChanged",size)
+
 }
 
 
 
-// ================= CLEAR =================
+export function setOpacity(value){
+
+opacity = value
+
+}
+
+
 
 export function clearPaint(){
 
-ctx.clearRect(0,0,paintCanvas.width,paintCanvas.height)
+paintCtx.clearRect(0,0,paintCanvas.width,paintCanvas.height)
 
-ctx.fillStyle = "#ffffff"
+paintCtx.fillStyle = "#ffffff"
+paintCtx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
 
-ctx.fillRect(0,0,paintCanvas.width,paintCanvas.height)
+texture.needsUpdate = true
 
-updateTexture()
+EventBus.emit("paintCleared")
 
 }
 
 
-
-// ================= EXPORT =================
 
 export function exportTexture(){
 
