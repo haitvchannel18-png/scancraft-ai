@@ -1,210 +1,115 @@
-// ================= IMPORTS =================
+// modules/data/manufacturing.js
 
-import { emit } from "../core/events.js"
-
-
-
-// ================= DATABASE =================
+import { EventBus } from "../core/events.js"
 
 const MANUFACTURING_DB = {
 
-bicycle:{
-industry:"Mechanical Manufacturing",
-
-steps:[
-"Frame tube cutting",
-"Frame welding",
-"Surface finishing",
-"Wheel assembly",
-"Gear installation",
-"Brake system installation",
-"Final quality inspection"
+bottle:{
+rawMaterials:["PET plastic","glass","aluminum"],
+process:[
+"raw material preparation",
+"molding or glass blowing",
+"cooling and shaping",
+"quality inspection",
+"packaging"
 ],
-
-materials:["steel tubes","rubber tires","aluminum rims"],
-
-tools:["welding machine","assembly tools","inspection tools"]
-
-},
-
-headphones:{
-industry:"Electronics Manufacturing",
-
-steps:[
-"Plastic shell molding",
-"Driver unit assembly",
-"Circuit board installation",
-"Ear cushion attachment",
-"Acoustic tuning",
-"Final audio testing"
-],
-
-materials:["plastic shell","audio drivers","foam cushions"],
-
-tools:["precision assembly tools","audio calibration systems"]
-
-},
-
-phone:{
-industry:"Electronics Manufacturing",
-
-steps:[
-"Chip fabrication",
-"Motherboard assembly",
-"Display module integration",
-"Battery installation",
-"Camera module assembly",
-"Software flashing",
-"Quality testing"
-],
-
-materials:["silicon chips","glass display","lithium battery"],
-
-tools:["clean room equipment","robotic assembly lines"]
-
+method:"Injection molding or glass blowing"
 },
 
 chair:{
-industry:"Furniture Manufacturing",
+rawMaterials:["wood","plastic","metal"],
+process:[
+"material cutting",
+"frame assembly",
+"surface finishing",
+"quality testing",
+"packaging"
+],
+method:"Carpentry or industrial molding"
+},
 
-steps:[
-"Wood cutting",
-"Frame assembly",
-"Sanding and finishing",
-"Seat attachment",
-"Quality inspection"
+laptop:{
+rawMaterials:["aluminum","silicon","plastic","glass"],
+process:[
+"chip fabrication",
+"PCB manufacturing",
+"component assembly",
+"software installation",
+"final testing"
+],
+method:"Electronics manufacturing"
+},
+
+car:{
+rawMaterials:["steel","aluminum","rubber","glass"],
+process:[
+"metal stamping",
+"body welding",
+"paint coating",
+"engine assembly",
+"final inspection"
+],
+method:"Automotive assembly line"
+},
+
+phone:{
+rawMaterials:["glass","aluminum","silicon","plastic"],
+process:[
+"display manufacturing",
+"chip fabrication",
+"circuit assembly",
+"software installation",
+"testing and packaging"
+],
+method:"Electronics micro-assembly"
+}
+
+}
+
+
+
+export async function getManufacturingInfo(label){
+
+if(!label) return null
+
+const key = label.toLowerCase()
+
+if(MANUFACTURING_DB[key]){
+
+EventBus.emit("manufacturingFound",key)
+
+return MANUFACTURING_DB[key]
+
+}
+
+return inferManufacturing(label)
+
+}
+
+
+
+function inferManufacturing(label){
+
+// fallback manufacturing reasoning for unknown objects
+
+const guess = {
+
+rawMaterials:["metal","plastic","composite materials"],
+
+process:[
+"material preparation",
+"shaping or molding",
+"assembly",
+"quality inspection",
+"packaging"
 ],
 
-materials:["wood panels","metal screws","fabric upholstery"],
-
-tools:["cutting machines","drills","finishing tools"]
+method:"General industrial manufacturing"
 
 }
 
-}
+EventBus.emit("manufacturingInferred",label)
 
-
-
-// ================= MAIN FUNCTION =================
-
-export async function getManufacturingInfo(objectName){
-
-try{
-
-emit("manufacturing:search:start", objectName)
-
-const key = objectName?.toLowerCase()
-
-let info = MANUFACTURING_DB[key]
-
-if(!info){
-
-info = generateGenericManufacturing(objectName)
-
-}
-
-emit("manufacturing:search:complete", info)
-
-return info
-
-}catch(err){
-
-console.error("Manufacturing lookup failed", err)
-
-emit("manufacturing:error")
-
-return null
-
-}
-
-}
-
-
-
-// ================= GENERIC PROCESS =================
-
-function generateGenericManufacturing(objectName){
-
-return {
-
-industry:"General Manufacturing",
-
-steps:[
-"Raw material preparation",
-"Component fabrication",
-"Assembly process",
-"Finishing operations",
-"Quality inspection"
-],
-
-materials:[`materials used in ${objectName}`],
-
-tools:["industrial machines","assembly tools"]
-
-}
-
-}
-
-
-
-// ================= PROCESS SUMMARY =================
-
-export function summarizeManufacturing(process){
-
-if(!process) return null
-
-return {
-
-industry:process.industry,
-
-stepCount:process.steps.length,
-
-materialCount:process.materials.length
-
-}
-
-}
-
-
-
-// ================= ESTIMATE COMPLEXITY =================
-
-export function estimateManufacturingComplexity(process){
-
-if(!process) return 0
-
-let score = process.steps.length * 10
-
-if(process.industry.includes("Electronics")) score += 30
-if(process.industry.includes("Mechanical")) score += 20
-
-return Math.min(score,100)
-
-}
-
-
-
-// ================= PROCESS VISUALIZATION =================
-
-export function buildProcessTimeline(process){
-
-if(!process) return []
-
-return process.steps.map((step,index)=>({
-
-stage:index+1,
-name:step
-
-}))
-
-}
-
-
-
-// ================= TOOL ANALYSIS =================
-
-export function listManufacturingTools(process){
-
-return process?.tools || []
+return guess
 
 }
