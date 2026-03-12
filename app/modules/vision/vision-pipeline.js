@@ -1,168 +1,122 @@
-// ================= IMPORT =================
+// modules/vision/vision-pipeline.js
 
-import { emit } from "../core/events.js"
+import { EventBus } from "../core/events.js"
 
-import { detectObjects } from "../detection/yolo.js"
-import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { findSimilarObjects } from "../vision-search/similarity-engine.js"
+import { runDetectionStage } from "./detection-stage.js"
+import { runLogoStage } from "./logo-stage.js"
+import { runSimilarityStage } from "./similarity-stage.js"
+import { runReasoningStage } from "./reasoning-stage.js"
+import { runKnowledgeStage } from "./knowledge-stage.js"
 
-import { runVisualReasoning } from "../ai/visual-reasoning.js"
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
-import { compareProductPrices } from "../commerce/product-compare.js"
-
-
-
-// ================= GLOBAL =================
-
-let pipelineRunning = false
-
-
-
-// ================= INIT =================
+let pipelineActive = false
+let processing = false
 
 export function initVisionPipeline(){
 
-pipelineRunning = true
+pipelineActive = true
+
+EventBus.emit("visionPipelineReady")
 
 }
 
 
-
-// ================= MAIN PROCESS =================
 
 export async function processFrame(frame){
 
-if(!pipelineRunning) return
+if(!pipelineActive || processing) return
+
+processing = true
 
 try{
 
-emit("ai:processing:start")
+EventBus.emit("visionFrameStart")
 
-// 1️⃣ Object Detection
-const detections = await detectObjects(frame)
+// 1️⃣ object detection
+const detection = await runDetectionStage(frame)
 
-emit("vision:detections", detections)
+if(!detection || detection.length === 0){
 
+EventBus.emit("visionNoObject")
 
-
-// 2️⃣ Process each object
-for(const object of detections){
-
-await processObject(frame, object)
+processing = false
+return
 
 }
 
-emit("ai:processing:stop")
+// 2️⃣ logo detection
+const logoResults = await runLogoStage(frame,detection)
+
+// 3️⃣ visual similarity search
+const similarityResults = await runSimilarityStage(frame,detection)
+
+// 4️⃣ reasoning
+const reasoning = await runReasoningStage({
+detection,
+logoResults,
+similarityResults
+})
+
+// 5️⃣ knowledge aggregation
+const knowledge = await runKnowledgeStage(reasoning)
+
+const result = {
+
+timestamp: Date.now(),
+
+objects: detection,
+
+logo: logoResults,
+
+similar: similarityResults,
+
+reasoning: reasoning,
+
+knowledge: knowledge
+
+}
+
+EventBus.emit("visionResult",result)
+
+processing = false
+
+return result
 
 }catch(err){
 
-console.error("Vision pipeline error", err)
+processing = false
 
-emit("ai:processing:error")
+EventBus.emit("visionError",err)
 
-}
-
-}
-
-
-
-// ================= PROCESS OBJECT =================
-
-async function processObject(frame, object){
-
-try{
-
-// Feature extraction
-const features = await extractFeatures(frame, object)
-
-// Similarity search
-const similarObjects = await findSimilarObjects(features)
-
-emit("vision:similarity-results", similarObjects)
-
-
-// AI reasoning
-const reasoning = await runVisualReasoning(object, similarObjects)
-
-emit("ai:reasoning", reasoning)
-
-
-// Knowledge aggregation
-const knowledge = await aggregateKnowledge(reasoning)
-
-emit("ai:object-info", {
-
-name: knowledge.name,
-description: knowledge.description
-
-})
-
-emit("ai:material-results", {
-
-material: knowledge.material
-
-})
-
-emit("ai:history-results", {
-
-history: knowledge.history
-
-})
-
-emit("ai:image-results", knowledge.images)
-
-
-// Commerce search
-const commerce = await compareProductPrices(object)
-
-emit("ai:price-results", commerce)
-
-}catch(err){
-
-console.error("Object processing error", err)
+console.error("Vision pipeline error",err)
 
 }
 
 }
 
 
-
-// ================= START PIPELINE =================
-
-export async function startVisionLoop(getFrame){
-
-while(pipelineRunning){
-
-const frame = await getFrame()
-
-if(frame){
-
-await processFrame(frame)
-
-}
-
-await delay(120)
-
-}
-
-}
-
-
-
-// ================= STOP PIPELINE =================
 
 export function stopVisionPipeline(){
 
-pipelineRunning = false
+pipelineActive = false
+
+EventBus.emit("visionPipelineStopped")
 
 }
 
 
 
-// ================= UTILS =================
+export function startVisionPipeline(){
 
-function delay(ms){
+pipelineActive = true
 
-return new Promise(resolve => setTimeout(resolve, ms))
+EventBus.emit("visionPipelineStarted")
+
+}
+
+
+
+export function isVisionPipelineActive(){
+
+return pipelineActive
 
 }
