@@ -1,58 +1,53 @@
 // modules/commerce/product-compare.js
 
 import { EventBus } from "../core/events.js"
+import { logAI } from "../utils/ai-logger.js"
 
-export function compareProducts(results){
+let lastComparison = null
 
-if(!results || results.length === 0) return null
+export function compareProducts(products){
 
-const normalized = results
-.map(normalizeProduct)
-.filter(Boolean)
+try{
 
-if(normalized.length === 0) return null
+if(!products || products.length === 0){
+return null
+}
 
-normalized.sort((a,b)=>a.priceValue - b.priceValue)
+EventBus.emit("productCompareStart",products)
 
-const bestDeal = normalized[0]
+const scored = products.map(p => ({
+...p,
+score: computeScore(p)
+}))
 
-const comparison = {
+const ranked = scored.sort((a,b)=> b.score - a.score)
 
-best: bestDeal,
+const best = ranked[0]
 
-options: normalized,
+const result = {
 
-totalSources: normalized.length,
-
-recommendation: generateRecommendation(bestDeal)
+bestProduct: best,
+ranking: ranked,
+total: products.length,
+timestamp: Date.now()
 
 }
 
-EventBus.emit("productComparisonReady",comparison)
+lastComparison = result
 
-return comparison
+EventBus.emit("productCompareComplete",result)
 
-}
+logAI("ProductCompare",result)
 
+return result
 
+}catch(err){
 
-function normalizeProduct(product){
+console.error("Product compare error",err)
 
-if(!product || !product.price) return null
+EventBus.emit("productCompareError",err)
 
-const priceValue = extractPrice(product.price)
-
-return {
-
-marketplace: product.marketplace,
-
-query: product.query,
-
-url: product.searchUrl,
-
-priceLabel: product.price,
-
-priceValue: priceValue
+return null
 
 }
 
@@ -60,21 +55,79 @@ priceValue: priceValue
 
 
 
-function extractPrice(priceString){
+function computeScore(product){
 
-if(!priceString) return Number.MAX_SAFE_INTEGER
+let score = 0
 
-const numbers = priceString.replace(/[^\d]/g,"")
+if(product.price){
 
-if(!numbers) return Number.MAX_SAFE_INTEGER
+score += priceScore(product.price)
 
-return parseInt(numbers,10)
+}
+
+if(product.rating){
+
+score += product.rating * 20
+
+}
+
+if(product.reviews){
+
+score += Math.log(product.reviews + 1) * 10
+
+}
+
+if(product.market){
+
+score += marketplaceTrust(product.market)
+
+}
+
+if(product.image){
+
+score += 10
+
+}
+
+return score
 
 }
 
 
 
-function generateRecommendation(best){
+function priceScore(price){
 
-return `Best price found on ${best.marketplace}`
+if(price < 500) return 50
+if(price < 1000) return 40
+if(price < 3000) return 30
+if(price < 10000) return 20
+
+return 10
+
+}
+
+
+
+function marketplaceTrust(market){
+
+const trust = {
+
+Amazon: 30,
+Flipkart: 30,
+Myntra: 25,
+JioMart: 25,
+Snapdeal: 20,
+AliExpress: 15,
+eBay: 15
+
+}
+
+return trust[market] || 10
+
+}
+
+
+
+export function getLastComparison(){
+return lastComparison
 }
