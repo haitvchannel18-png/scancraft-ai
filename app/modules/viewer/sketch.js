@@ -1,55 +1,35 @@
-// ================= IMPORT =================
+// modules/viewer/sketch.js
 
-import { on, emit } from "../core/events.js"
-import { playBrushSound } from "../audio/editor-sounds.js"
-import { fadeIn } from "../ui/animation-engine.js"
+import { EventBus } from "../core/events.js"
 
-
-
-// ================= GLOBAL =================
-
-let sketchCanvas
+let canvas
 let ctx
+
 let drawing = false
-let currentColor = "#00f7ff"
+let tool = "pen"
+
+let color = "#00ffff"
 let lineWidth = 3
+
+let startX = 0
+let startY = 0
+
 let history = []
+let redoStack = []
 
+export function initSketch(targetCanvas){
 
+canvas = targetCanvas
 
-// ================= INIT =================
-
-export function initSketch(){
-
-sketchCanvas = document.getElementById("sketch-canvas")
-
-if(!sketchCanvas) return
-
-ctx = sketchCanvas.getContext("2d")
-
-setupCanvas()
-
-listenEvents()
-
-sketchCanvas.addEventListener("mousedown", startDraw)
-sketchCanvas.addEventListener("mousemove", draw)
-sketchCanvas.addEventListener("mouseup", stopDraw)
-sketchCanvas.addEventListener("mouseleave", stopDraw)
-
-}
-
-
-
-// ================= SETUP =================
-
-function setupCanvas(){
+ctx = canvas.getContext("2d")
 
 resizeCanvas()
 
-window.addEventListener("resize", resizeCanvas)
+window.addEventListener("resize",resizeCanvas)
 
-ctx.lineCap = "round"
-ctx.lineJoin = "round"
+attachEvents()
+
+EventBus.emit("sketchReady")
 
 }
 
@@ -57,50 +37,44 @@ ctx.lineJoin = "round"
 
 function resizeCanvas(){
 
-sketchCanvas.width = sketchCanvas.offsetWidth
-sketchCanvas.height = sketchCanvas.offsetHeight
+canvas.width = canvas.clientWidth
+canvas.height = canvas.clientHeight
 
 }
 
 
 
-// ================= EVENTS =================
+function attachEvents(){
 
-function listenEvents(){
+canvas.addEventListener("mousedown",startDraw)
+canvas.addEventListener("mousemove",draw)
+canvas.addEventListener("mouseup",stopDraw)
 
-on("sketch:open", openSketch)
-
-on("sketch:clear", clearSketch)
-
-}
-
-
-
-// ================= OPEN =================
-
-function openSketch(){
-
-sketchCanvas.style.display = "block"
-
-fadeIn(sketchCanvas)
-
-emit("sketch:ready")
+canvas.addEventListener("touchstart",startDraw)
+canvas.addEventListener("touchmove",draw)
+canvas.addEventListener("touchend",stopDraw)
 
 }
 
 
-
-// ================= DRAW =================
 
 function startDraw(e){
 
 drawing = true
 
-saveState()
+const pos = getPointer(e)
+
+startX = pos.x
+startY = pos.y
+
+saveHistory()
+
+if(tool === "pen"){
 
 ctx.beginPath()
+ctx.moveTo(startX,startY)
 
-ctx.moveTo(e.offsetX,e.offsetY)
+}
 
 }
 
@@ -110,14 +84,25 @@ function draw(e){
 
 if(!drawing) return
 
+const pos = getPointer(e)
+
+ctx.strokeStyle = color
 ctx.lineWidth = lineWidth
-ctx.strokeStyle = currentColor
 
-ctx.lineTo(e.offsetX,e.offsetY)
+if(tool === "pen"){
 
+ctx.lineTo(pos.x,pos.y)
 ctx.stroke()
 
-playBrushSound()
+}
+
+else{
+
+redrawHistory()
+
+drawShape(pos.x,pos.y)
+
+}
 
 }
 
@@ -127,23 +112,115 @@ function stopDraw(){
 
 drawing = false
 
-ctx.closePath()
+ctx.beginPath()
+
+EventBus.emit("sketchStroke")
 
 }
 
 
 
-// ================= SETTINGS =================
+function drawShape(x,y){
 
-export function setSketchColor(color){
+ctx.beginPath()
 
-currentColor = color
+if(tool === "line"){
+
+ctx.moveTo(startX,startY)
+ctx.lineTo(x,y)
+
+}
+
+if(tool === "rectangle"){
+
+ctx.rect(startX,startY,x-startX,y-startY)
+
+}
+
+if(tool === "circle"){
+
+const radius = Math.hypot(x-startX,y-startY)
+
+ctx.arc(startX,startY,radius,0,Math.PI*2)
+
+}
+
+ctx.stroke()
 
 }
 
 
 
-export function setSketchWidth(size){
+function redrawHistory(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+history.forEach(img=>{
+
+ctx.drawImage(img,0,0)
+
+})
+
+}
+
+
+
+function saveHistory(){
+
+const img = new Image()
+
+img.src = canvas.toDataURL()
+
+history.push(img)
+
+redoStack = []
+
+}
+
+
+
+function getPointer(e){
+
+const rect = canvas.getBoundingClientRect()
+
+let x
+let y
+
+if(e.touches){
+
+x = e.touches[0].clientX - rect.left
+y = e.touches[0].clientY - rect.top
+
+}else{
+
+x = e.clientX - rect.left
+y = e.clientY - rect.top
+
+}
+
+return {x,y}
+
+}
+
+
+
+export function setTool(newTool){
+
+tool = newTool
+
+}
+
+
+
+export function setColor(newColor){
+
+color = newColor
+
+}
+
+
+
+export function setLineWidth(size){
 
 lineWidth = size
 
@@ -151,62 +228,43 @@ lineWidth = size
 
 
 
-// ================= CLEAR =================
-
-function clearSketch(){
-
-ctx.clearRect(
-
-0,
-0,
-sketchCanvas.width,
-sketchCanvas.height
-
-)
-
-history = []
-
-}
-
-
-
-// ================= HISTORY =================
-
-function saveState(){
-
-history.push(
-
-ctx.getImageData(
-
-0,
-0,
-sketchCanvas.width,
-sketchCanvas.height
-
-)
-
-)
-
-}
-
-
-
-export function undoSketch(){
+export function undo(){
 
 if(history.length === 0) return
 
-const last = history.pop()
+redoStack.push(history.pop())
 
-ctx.putImageData(last,0,0)
+redrawHistory()
 
 }
 
 
 
-// ================= EXPORT =================
+export function redo(){
+
+if(redoStack.length === 0) return
+
+history.push(redoStack.pop())
+
+redrawHistory()
+
+}
+
+
+
+export function clearSketch(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+history = []
+redoStack = []
+
+}
+
+
 
 export function exportSketch(){
 
-return sketchCanvas.toDataURL("image/png")
+return canvas.toDataURL("image/png")
 
 }
