@@ -1,133 +1,56 @@
-// ================= IMPORT =================
+// modules/commerce/flipkart-search.js
 
-import { emit } from "../core/events.js"
-
-
-
-// ================= CONFIG =================
+import { EventBus } from "../core/events.js"
 
 const FLIPKART_BASE = "https://www.flipkart.com/search?q="
 
+export async function searchFlipkart(objectLabel){
 
+if(!objectLabel) return null
 
-// ================= SEARCH FLIPKART =================
+const query = encodeURIComponent(objectLabel)
 
-export async function searchFlipkartProducts(object){
+const url = FLIPKART_BASE + query
 
-emit("commerce:flipkart-search:start")
-
-try{
-
-const query = encodeURIComponent(object.name)
-
-const searchURL = `${FLIPKART_BASE}${query}`
+const priceRange = estimatePrice(objectLabel)
 
 const result = {
 
-object: object.name,
+marketplace:"Flipkart",
 
-marketplace: "Flipkart",
+query:objectLabel,
 
-searchURL,
+searchUrl:url,
 
-estimatedPrice: estimatePrice(object)
+price:priceRange,
+
+note:"Open link to view live Flipkart results"
 
 }
 
-emit("commerce:flipkart-search:complete", result)
+EventBus.emit("flipkartSearchReady",result)
 
 return result
 
-}catch(err){
-
-console.error("Flipkart search failed", err)
-
-emit("commerce:flipkart-search:error")
-
-return null
-
-}
-
 }
 
 
 
-// ================= PRICE ESTIMATION =================
+function estimatePrice(label){
 
-function estimatePrice(object){
+const ranges = {
 
-const category = object.category?.toLowerCase()
-
-if(category === "electronics"){
-
-return "₹2,000 - ₹25,000"
-
-}
-
-if(category === "mechanical"){
-
-return "₹500 - ₹10,000"
+bottle:"₹150 - ₹800",
+chair:"₹1500 - ₹12000",
+laptop:"₹30000 - ₹200000",
+phone:"₹5000 - ₹120000",
+headphones:"₹500 - ₹10000"
 
 }
 
-if(category === "furniture"){
+const key = label.toLowerCase()
 
-return "₹2,000 - ₹50,000"
+if(ranges[key]) return ranges[key]
 
-}
-
-return "₹300 - ₹5,000"
-
-}
-
-
-
-// ================= GENERATE LINK =================
-
-export function generateFlipkartLink(productName){
-
-const query = encodeURIComponent(productName)
-
-return `${FLIPKART_BASE}${query}`
-
-}
-
-
-
-// ================= PRODUCT LIST =================
-
-export function generateFlipkartProductList(objects){
-
-return objects.map(obj => ({
-
-name: obj.name,
-
-marketplace: "Flipkart",
-
-link: generateFlipkartLink(obj.name),
-
-priceRange: estimatePrice(obj)
-
-}))
-
-}
-
-
-
-// ================= PRODUCT SUMMARY =================
-
-export function flipkartProductSummary(object){
-
-return {
-
-title: object.name,
-
-marketplace: "Flipkart",
-
-link: generateFlipkartLink(object.name),
-
-priceRange: estimatePrice(object)
-
-}
-
+return "₹300 - ₹20000"
 }
