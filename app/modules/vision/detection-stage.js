@@ -1,41 +1,35 @@
-// ================= IMPORT =================
+// modules/vision/detection-stage.js
 
+import { EventBus } from "../core/events.js"
 import { detectObjects } from "../detection/yolo.js"
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
 
-
-
-// ================= CONFIG =================
-
-const CONFIDENCE_THRESHOLD = CONFIG.DETECTION_THRESHOLD || 0.45
-const MAX_OBJECTS = CONFIG.MAX_DETECTIONS || 12
-
-
-
-// ================= MAIN STAGE =================
+const CONFIDENCE_THRESHOLD = 0.35
 
 export async function runDetectionStage(frame){
 
 try{
 
-emit("vision:detection:start")
+EventBus.emit("visionStageStart","detection")
 
-const rawDetections = await detectObjects(frame)
+const predictions = await detectObjects(frame)
 
-const filtered = filterDetections(rawDetections)
+if(!predictions || predictions.length === 0){
+return []
+}
 
-const normalized = normalizeDetections(filtered, frame)
+const filtered = filterPredictions(predictions)
 
-emit("vision:detection:complete", normalized)
+const normalized = normalizePredictions(filtered)
+
+EventBus.emit("visionDetectionComplete",normalized)
 
 return normalized
 
 }catch(err){
 
-console.error("Detection stage failed", err)
+console.error("Detection stage error",err)
 
-emit("vision:detection:error")
+EventBus.emit("visionDetectionError",err)
 
 return []
 
@@ -45,96 +39,52 @@ return []
 
 
 
-// ================= FILTER =================
+function filterPredictions(predictions){
 
-function filterDetections(detections){
+return predictions.filter(p=>{
 
-if(!detections) return []
+if(!p) return false
 
-return detections
-.filter(obj => obj.score >= CONFIDENCE_THRESHOLD)
-.sort((a,b)=> b.score - a.score)
-.slice(0, MAX_OBJECTS)
+if(p.score < CONFIDENCE_THRESHOLD) return false
+
+if(!p.bbox) return false
+
+return true
+
+})
 
 }
 
 
 
-// ================= NORMALIZE =================
+function normalizePredictions(predictions){
 
-function normalizeDetections(detections, frame){
+return predictions.map(p=>{
 
-const width = frame.width || frame.videoWidth
-const height = frame.height || frame.videoHeight
-
-return detections.map(obj => {
+const [x,y,width,height] = p.bbox
 
 return {
 
-label: obj.label || obj.class || "object",
+label: p.class || p.label || "unknown",
 
-score: obj.score,
+confidence: p.score,
 
-x: obj.x / width,
-y: obj.y / height,
-width: obj.width / width,
-height: obj.height / height,
+bbox:{
+x,
+y,
+width,
+height
+},
 
-centerX: (obj.x + obj.width/2) / width,
-centerY: (obj.y + obj.height/2) / height
+center:{
+x: x + width/2,
+y: y + height/2
+},
+
+area: width * height
 
 }
 
 })
-
-}
-
-
-
-// ================= UTILS =================
-
-export function getBestDetection(detections){
-
-if(!detections || detections.length === 0) return null
-
-return detections.reduce((best, current)=>{
-
-return current.score > best.score ? current : best
-
-})
-
-}
-
-
-
-export function groupDetections(detections){
-
-const groups = {}
-
-detections.forEach(obj => {
-
-if(!groups[obj.label]){
-
-groups[obj.label] = []
-
-}
-
-groups[obj.label].push(obj)
-
-})
-
-return groups
-
-}
-
-
-
-export function detectionSummary(detections){
-
-return detections.map(d => {
-
-return `${d.label} ${(d.score*100).toFixed(0)}%`
-
-}).join(", ")
 
 }
