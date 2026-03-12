@@ -1,96 +1,64 @@
-// ================= IMPORTS =================
+// modules/ai/context.js
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
+import { cacheKnowledge } from "../memory/cache-manager.js"
+import { logAI } from "../utils/ai-logger.js"
 
+let context = {
 
+activeObject: null,
 
-// ================= STATE =================
+brand: null,
 
-let sceneObjects = []
-let sceneContext = null
+materials: [],
 
+history: null,
 
+scene: null,
 
-// ================= UPDATE OBJECTS =================
+conversation: [],
 
-export function updateSceneObjects(objects){
-
-sceneObjects = objects || []
-
-emit("context:objects:update", sceneObjects)
-
-sceneContext = analyzeScene(sceneObjects)
-
-emit("context:scene:updated", sceneContext)
-
-return sceneContext
+lastUpdated: null
 
 }
 
 
 
-// ================= SCENE ANALYSIS =================
+export function initContext(){
 
-function analyzeScene(objects){
+EventBus.on("objectBrainComplete",updateContext)
 
-if(!objects || objects.length === 0){
-
-return {
-type:"unknown",
-description:"No recognizable environment detected"
-}
-
-}
-
-const labels = objects.map(o => o.name?.toLowerCase() || "")
-
-
-// scene rules
-
-if(labels.includes("stove") || labels.includes("pan") || labels.includes("kettle")){
-
-return buildScene("kitchen","Cooking environment with kitchen tools")
-
-}
-
-if(labels.includes("bed") || labels.includes("pillow")){
-
-return buildScene("bedroom","Sleeping environment")
-
-}
-
-if(labels.includes("computer") || labels.includes("keyboard") || labels.includes("monitor")){
-
-return buildScene("office","Workspace with computer equipment")
-
-}
-
-if(labels.includes("car") || labels.includes("bicycle")){
-
-return buildScene("transport","Transportation environment")
-
-}
-
-return buildScene("general","General environment with mixed objects")
+EventBus.emit("aiContextReady")
 
 }
 
 
 
-// ================= SCENE BUILDER =================
+export function updateContext(payload){
 
-function buildScene(type,description){
+try{
 
-return {
+if(!payload) return
 
-type,
+context.activeObject = payload.object || null
 
-description,
+context.brand = payload.brand || null
 
-objects: sceneObjects.map(o => o.name),
+context.materials = payload.materials || []
 
-confidence: computeConfidence(sceneObjects)
+context.history = payload.history || null
+
+context.lastUpdated = Date.now()
+
+cacheKnowledge("context",context)
+
+logAI("ContextUpdate",context)
+
+EventBus.emit("contextUpdated",context)
+
+}catch(err){
+
+console.error("Context update error",err)
 
 }
 
@@ -98,114 +66,96 @@ confidence: computeConfidence(sceneObjects)
 
 
 
-// ================= CONFIDENCE =================
+export function updateSceneContext(sceneData){
 
-function computeConfidence(objects){
+context.scene = sceneData
 
-const base = 0.4
+context.lastUpdated = Date.now()
 
-const bonus = Math.min(objects.length * 0.1,0.5)
-
-return Math.min(base + bonus,1)
+EventBus.emit("sceneContextUpdated",sceneData)
 
 }
 
 
 
-// ================= SCENE EXPLANATION =================
+export function addConversation(role,message){
 
-export function describeScene(){
+context.conversation.push({
 
-if(!sceneContext){
+role,
 
-return "Scene not analyzed yet."
+message,
 
-}
-
-const objectList = sceneContext.objects.join(", ")
-
-return `I see ${objectList}. This appears to be a ${sceneContext.type} environment.`
-
-}
-
-
-
-// ================= RELATIONSHIP ANALYSIS =================
-
-export function analyzeObjectRelations(){
-
-const relations = []
-
-for(let i=0;i<sceneObjects.length;i++){
-
-for(let j=i+1;j<sceneObjects.length;j++){
-
-const a = sceneObjects[i].name
-const b = sceneObjects[j].name
-
-relations.push(`${a} is likely used with ${b}`)
-
-}
-
-}
-
-return relations
-
-}
-
-
-
-// ================= PRIMARY OBJECT =================
-
-export function getPrimaryObject(){
-
-if(!sceneObjects || sceneObjects.length === 0){
-
-return null
-
-}
-
-return sceneObjects.reduce((best,current)=>{
-
-return (current.confidence || 0) > (best.confidence || 0) ? current : best
+time: Date.now()
 
 })
 
-}
+if(context.conversation.length > 20){
 
-
-
-// ================= SCENE SUMMARY =================
-
-export function getSceneSummary(){
-
-if(!sceneContext){
-
-return null
+context.conversation.shift()
 
 }
 
-return {
-
-sceneType: sceneContext.type,
-
-objectCount: sceneContext.objects.length,
-
-confidence: sceneContext.confidence
-
-}
+EventBus.emit("conversationUpdated",context.conversation)
 
 }
 
 
 
-// ================= RESET =================
+export function getContext(){
 
-export function resetScene(){
+return context
 
-sceneObjects = []
-sceneContext = null
+}
 
-emit("context:reset")
+
+
+export function getActiveObject(){
+
+return context.activeObject
+
+}
+
+
+
+export function getConversationHistory(){
+
+return context.conversation
+
+}
+
+
+
+export function clearConversation(){
+
+context.conversation = []
+
+EventBus.emit("conversationCleared")
+
+}
+
+
+
+export function resetContext(){
+
+context = {
+
+activeObject:null,
+
+brand:null,
+
+materials:[],
+
+history:null,
+
+scene:null,
+
+conversation:[],
+
+lastUpdated:null
+
+}
+
+EventBus.emit("contextReset")
 
 }
