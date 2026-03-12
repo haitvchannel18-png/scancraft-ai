@@ -1,155 +1,80 @@
-// ================= IMPORT =================
+// modules/commerce/product-compare.js
 
-import { emit } from "../core/events.js"
-import { searchAmazonProducts } from "./amazon-search.js"
-import { searchFlipkartProducts } from "./flipkart-search.js"
+import { EventBus } from "../core/events.js"
 
+export function compareProducts(results){
 
+if(!results || results.length === 0) return null
 
-// ================= COMPARE PRODUCTS =================
+const normalized = results
+.map(normalizeProduct)
+.filter(Boolean)
 
-export async function compareProductPrices(object){
+if(normalized.length === 0) return null
 
-emit("commerce:compare:start")
+normalized.sort((a,b)=>a.priceValue - b.priceValue)
 
-try{
+const bestDeal = normalized[0]
 
-const results = await Promise.all([
+const comparison = {
 
-searchAmazonProducts(object),
-searchFlipkartProducts(object)
+best: bestDeal,
 
-])
+options: normalized,
 
-const validResults = results.filter(r => r !== null)
+totalSources: normalized.length,
 
-const ranked = rankMarketplaces(validResults)
-
-emit("commerce:compare:complete", ranked)
-
-return ranked
-
-}catch(err){
-
-console.error("Product comparison failed", err)
-
-emit("commerce:compare:error")
-
-return []
+recommendation: generateRecommendation(bestDeal)
 
 }
+
+EventBus.emit("productComparisonReady",comparison)
+
+return comparison
 
 }
 
 
 
-// ================= RANK MARKETPLACES =================
+function normalizeProduct(product){
 
-function rankMarketplaces(results){
+if(!product || !product.price) return null
 
-return results.sort((a,b)=>{
-
-const priceA = extractPrice(a.estimatedPrice)
-const priceB = extractPrice(b.estimatedPrice)
-
-return priceA - priceB
-
-})
-
-}
-
-
-
-// ================= PRICE EXTRACTION =================
-
-function extractPrice(priceRange){
-
-if(!priceRange){
-
-return Infinity
-
-}
-
-const numbers = priceRange.match(/\d+/g)
-
-if(!numbers){
-
-return Infinity
-
-}
-
-return parseInt(numbers[0])
-
-}
-
-
-
-// ================= BEST DEAL =================
-
-export function findBestDeal(results){
-
-if(!results || results.length === 0){
-
-return null
-
-}
-
-return results[0]
-
-}
-
-
-
-// ================= SUMMARY =================
-
-export function comparisonSummary(results){
-
-if(!results.length){
-
-return "No product results available."
-
-}
-
-const best = results[0]
-
-return `Best deal available on ${best.marketplace}. 
-Estimated price range: ${best.estimatedPrice}.`
-
-}
-
-
-
-// ================= PRODUCT CARD =================
-
-export function generateProductCards(results){
-
-return results.map(result => ({
-
-marketplace: result.marketplace,
-product: result.object,
-priceRange: result.estimatedPrice,
-link: result.searchURL
-
-}))
-
-}
-
-
-
-// ================= MULTI MARKET SEARCH =================
-
-export async function multiMarketplaceSearch(object){
-
-const marketplaces = await compareProductPrices(object)
+const priceValue = extractPrice(product.price)
 
 return {
 
-object: object.name,
+marketplace: product.marketplace,
 
-bestDeal: findBestDeal(marketplaces),
+query: product.query,
 
-marketplaces
+url: product.searchUrl,
+
+priceLabel: product.price,
+
+priceValue: priceValue
 
 }
 
+}
+
+
+
+function extractPrice(priceString){
+
+if(!priceString) return Number.MAX_SAFE_INTEGER
+
+const numbers = priceString.replace(/[^\d]/g,"")
+
+if(!numbers) return Number.MAX_SAFE_INTEGER
+
+return parseInt(numbers,10)
+
+}
+
+
+
+function generateRecommendation(best){
+
+return `Best price found on ${best.marketplace}`
 }
