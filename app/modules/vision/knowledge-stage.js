@@ -1,44 +1,85 @@
-// ================= IMPORT =================
+// modules/vision/knowledge-stage.js
 
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
 
+import { searchHistory } from "../knowledge/history-search.js"
+import { getMaterialInfo } from "../knowledge/material-db.js"
+import { searchProductDB } from "../knowledge/product-db.js"
+import { getBrandInfo } from "../knowledge/brand-info.js"
+import { searchPrice } from "../knowledge/price-search.js"
+import { fetchWiki } from "../knowledge/wiki.js"
 
-
-// ================= CONFIG =================
-
-const MIN_CONFIDENCE = CONFIG.KNOWLEDGE_THRESHOLD || 0.35
-
-
-
-// ================= MAIN STAGE =================
+const MAX_IMAGES = 5
 
 export async function runKnowledgeStage(reasoningResults){
 
 try{
 
-emit("vision:knowledge:start")
+EventBus.emit("visionStageStart","knowledge")
 
-const knowledgeResults = []
+if(!reasoningResults || reasoningResults.length === 0){
+return []
+}
+
+const enriched = []
 
 for(const item of reasoningResults){
 
-const knowledge = await processKnowledge(item)
+const objectName = item.object || item.label
 
-knowledgeResults.push(knowledge)
+const history = await searchHistory(objectName)
+
+const materials = await getMaterialInfo(objectName)
+
+const product = await searchProductDB(objectName)
+
+const brand = await getBrandInfo(item.brand)
+
+const price = await searchPrice(objectName)
+
+const wiki = await fetchWiki(objectName)
+
+const images = extractImages(wiki)
+
+const knowledge = {
+
+object: objectName,
+
+confidence: item.confidence,
+
+brand,
+
+category: product?.category || "unknown",
+
+description: wiki?.summary || "",
+
+history,
+
+materials,
+
+manufacturing: product?.manufacturing || [],
+
+price,
+
+images,
+
+source: "knowledge-stage"
 
 }
 
-emit("vision:knowledge:complete", knowledgeResults)
+enriched.push(knowledge)
 
-return knowledgeResults
+}
+
+EventBus.emit("visionKnowledgeComplete",enriched)
+
+return enriched
 
 }catch(err){
 
-console.error("Knowledge stage error", err)
+console.error("Knowledge stage error",err)
 
-emit("vision:knowledge:error")
+EventBus.emit("visionKnowledgeError",err)
 
 return []
 
@@ -48,74 +89,10 @@ return []
 
 
 
-// ================= PROCESS =================
+function extractImages(wiki){
 
-async function processKnowledge(reasoning){
+if(!wiki || !wiki.images) return []
 
-const knowledge = await aggregateKnowledge(reasoning)
-
-return {
-
-name: reasoning.guess || reasoning.object,
-
-confidence: reasoning.confidence,
-
-description: knowledge.description,
-
-material: knowledge.material,
-
-history: knowledge.history,
-
-manufacturing: knowledge.manufacturing,
-
-images: knowledge.images,
-
-futureIdeas: knowledge.futureIdeas,
-
-category: reasoning.category,
-
-purpose: reasoning.purpose
-
-}
-
-}
-
-
-
-// ================= FILTER =================
-
-export function filterKnowledge(results){
-
-return results.filter(r => r.confidence >= MIN_CONFIDENCE)
-
-}
-
-
-
-// ================= PRIMARY =================
-
-export function getPrimaryKnowledge(results){
-
-if(!results || results.length === 0) return null
-
-return results.reduce((best,current)=>{
-
-return current.confidence > best.confidence ? current : best
-
-})
-
-}
-
-
-
-// ================= SUMMARY =================
-
-export function knowledgeSummary(results){
-
-return results.map(r => {
-
-return `${r.name} (${(r.confidence*100).toFixed(0)}%)`
-
-})
+return wiki.images.slice(0,MAX_IMAGES)
 
 }
