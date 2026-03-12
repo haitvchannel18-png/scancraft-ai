@@ -1,157 +1,109 @@
-// ================= IMPORTS =================
+// modules/ai/future-ai.js
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
 
+import { getContext } from "./context.js"
+import { predictFuture } from "../knowledge/future-predict.js"
 
-
-// ================= STATE =================
+import { logAI } from "../utils/ai-logger.js"
+import { cacheKnowledge } from "../memory/cache-manager.js"
 
 let activeObject = null
+let lastFutureResult = null
 
+export function initFutureAI(){
 
+EventBus.on("objectBrainComplete",setObjectContext)
 
-// ================= SET OBJECT =================
-
-export function setFutureObject(object){
-
-activeObject = object
-
-emit("future:object:set", object)
+EventBus.emit("futureAIReady")
 
 }
 
 
 
-// ================= MAIN ENGINE =================
+function setObjectContext(payload){
 
-export async function generateFutureConcepts(){
-
-if(!activeObject){
-
-emit("future:error","No object selected")
-
-return []
+activeObject = payload
 
 }
 
-emit("future:analysis:start")
+
+
+export async function generateFutureConcept(objectName){
 
 try{
 
-const concepts = await predictConcepts(activeObject)
+if(!objectName && activeObject){
+objectName = activeObject.object
+}
 
-emit("future:analysis:complete", concepts)
+if(!objectName){
+return null
+}
 
-return concepts
+const context = getContext()
+
+const prediction = await predictFuture(objectName,context)
+
+const concepts = buildFutureConcepts(objectName,prediction)
+
+const result = {
+
+object: objectName,
+
+prediction,
+
+concepts,
+
+generatedAt: Date.now()
+
+}
+
+lastFutureResult = result
+
+cacheKnowledge("future-"+objectName,result)
+
+EventBus.emit("futureConceptReady",result)
+
+logAI("FutureAI",result)
+
+return result
 
 }catch(err){
 
-console.error("Future AI error", err)
+console.error("Future AI error",err)
 
-emit("future:error")
+EventBus.emit("futureAIError",err)
 
-return []
-
-}
+return null
 
 }
 
+}
 
 
-// ================= FUTURE PREDICTION =================
 
-async function predictConcepts(object){
-
-const name = object.name.toLowerCase()
+function buildFutureConcepts(objectName,prediction){
 
 const concepts = []
 
-
-
-if(name.includes("car")){
+prediction.trends.forEach((trend,index)=>{
 
 concepts.push({
 
-title:"AI Autonomous Car",
+id:index+1,
 
-description:"Self driving car with AI navigation and zero human control",
+title:`Future ${objectName} concept ${index+1}`,
 
-features:["AI navigation","electric engine","smart sensors"]
+trend,
 
-})
+description:`Future ${objectName} may evolve with ${trend} technology.`,
 
-concepts.push({
-
-title:"Solar Powered Car",
-
-description:"Car powered by solar panels integrated in body",
-
-features:["solar panels","battery storage","eco friendly"]
+designHints:generateDesignHints(objectName,trend)
 
 })
 
-}
-
-
-
-else if(name.includes("bicycle")){
-
-concepts.push({
-
-title:"AI Smart Bicycle",
-
-description:"Bicycle with AI navigation and automatic balancing",
-
-features:["auto balance","AI navigation","fitness tracking"]
-
 })
-
-concepts.push({
-
-title:"Hover Bicycle",
-
-description:"Magnetic levitation bicycle for futuristic transportation",
-
-features:["magnetic lift","zero friction","ultra speed"]
-
-})
-
-}
-
-
-
-else if(name.includes("chair")){
-
-concepts.push({
-
-title:"AI Ergonomic Chair",
-
-description:"Chair that adjusts posture automatically using sensors",
-
-features:["posture detection","AI adjustment","health monitoring"]
-
-})
-
-}
-
-
-
-else{
-
-concepts.push({
-
-title:`Smart ${object.name}`,
-
-description:`Future version of ${object.name} with AI integration`,
-
-features:["AI control","smart sensors","automation"]
-
-})
-
-}
-
-
 
 return concepts
 
@@ -159,36 +111,63 @@ return concepts
 
 
 
-// ================= IMAGE PROMPT GENERATOR =================
+function generateDesignHints(objectName,trend){
 
-export function buildFutureImagePrompt(object){
+const hints = []
 
-return `Futuristic version of ${object.name}, ultra modern design, sci-fi style, glowing technology, high detail`
+if(trend.includes("AI")){
+
+hints.push("integrated AI system")
+hints.push("smart automation")
+
+}
+
+if(trend.includes("eco")){
+
+hints.push("eco friendly materials")
+hints.push("recyclable design")
+
+}
+
+if(trend.includes("smart")){
+
+hints.push("IoT connectivity")
+hints.push("sensor integration")
+
+}
+
+if(objectName.toLowerCase().includes("car")){
+
+hints.push("autonomous driving")
+hints.push("electric propulsion")
+
+}
+
+if(objectName.toLowerCase().includes("bottle")){
+
+hints.push("self cooling material")
+hints.push("smart hydration tracking")
+
+}
+
+return hints
 
 }
 
 
 
-// ================= FUTURE SUMMARY =================
+export function getLastFutureConcept(){
 
-export function summarizeFuture(concepts){
-
-return concepts.map(c => c.title)
+return lastFutureResult
 
 }
 
 
 
-// ================= FUTURE SCORE =================
+export function clearFutureConcept(){
 
-export function futureInnovationScore(object){
+lastFutureResult = null
 
-let score = 50
-
-if(object.category === "vehicle") score += 30
-if(object.category === "electronics") score += 20
-if(object.category === "furniture") score += 10
-
-return Math.min(score,100)
+EventBus.emit("futureConceptCleared")
 
 }
