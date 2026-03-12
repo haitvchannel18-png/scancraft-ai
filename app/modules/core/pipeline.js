@@ -1,171 +1,98 @@
-// ================= IMPORTS =================
+// modules/core/pipeline.js
 
-import { emit } from "./events.js"
+import { EventBus } from "./events.js"
 
 import { detectObjects } from "../detection/yolo.js"
-
 import { extractFeatures } from "../vision-search/feature-extractor.js"
+import { searchSimilar } from "../vision-search/similarity-search.js"
 
-import { findSimilarObjects, guessObject } from "../vision-search/similarity-engine.js"
+import { reasoningEngine } from "../ai/reasoning-engine.js"
+import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
 
-import { explainObject } from "../ai/explain-ai.js"
-
-import { showObjectModel } from "../viewer/viewer.js"
-
-
-// ================= STATE =================
-
-let processing = false
-
-let frameInterval = 200
+let initialized = false
 
 
-// ================= START STREAM =================
+export async function initPipeline(){
 
-export function startStreamProcessor(videoElement){
+console.log("Initializing Vision Pipeline")
 
-emit("pipeline:started")
+initialized = true
 
-setInterval(()=>{
-
-processFrame(videoElement)
-
-}, frameInterval)
+EventBus.emit("pipelineReady")
 
 }
 
 
-// ================= FRAME PROCESS =================
 
-async function processFrame(video){
+export async function processFrame(canvas){
 
-if(processing) return
-
-processing = true
+if(!initialized) return null
 
 try{
 
-const frame = captureFrame(video)
+// 1️⃣ Detection
+const detections = await detectObjects(canvas)
 
-emit("pipeline:frame")
+if(!detections || detections.length === 0) return null
 
-// ---------------- DETECTION ----------------
 
-const detections = await detectObjects(frame)
+// choose best detection
+const target = detections[0]
 
-if(!detections.length){
 
-processing = false
+// 2️⃣ Feature Extraction
+const features = await extractFeatures(canvas, target.box)
 
-return
+
+// 3️⃣ Similarity Search
+const similar = await searchSimilar(features)
+
+
+// 4️⃣ Reasoning
+const reasoning = await reasoningEngine({
+
+label: target.label,
+similarObjects: similar
+
+})
+
+
+// 5️⃣ Knowledge Aggregation
+const knowledge = await aggregateKnowledge({
+
+label: target.label,
+reasoning
+
+})
+
+
+
+const result = {
+
+label: target.label,
+confidence: target.confidence,
+box: target.box,
+
+similarObjects: similar,
+
+knowledge
 
 }
 
-// choose strongest detection
 
-const object = detections[0]
+EventBus.emit("pipelineResult", result)
 
-emit("pipeline:object-detected", object)
+return result
 
-// ---------------- FEATURE EXTRACTION ----------------
-
-const crop = cropObject(frame, object.box)
-
-const features = await extractFeatures(crop)
-
-emit("pipeline:features")
-
-// ---------------- SIMILARITY SEARCH ----------------
-
-const matches = await findSimilarObjects(features)
-
-const guessedObject = guessObject(matches)
-
-emit("pipeline:object-identified", guessedObject)
-
-// ---------------- AI EXPLANATION ----------------
-
-const explanation = await explainObject(guessedObject)
-
-emit("pipeline:explanation", explanation)
-
-// ---------------- VIEWER ----------------
-
-showObjectModel(guessedObject.name)
-
-emit("pipeline:model-loaded")
 
 }catch(err){
 
-console.error("Pipeline error", err)
+console.error("Pipeline error",err)
+
+EventBus.emit("pipelineError",err)
+
+return null
 
 }
-
-processing = false
-
-}
-
-
-// ================= FRAME CAPTURE =================
-
-function captureFrame(video){
-
-const canvas = document.createElement("canvas")
-
-canvas.width = video.videoWidth
-canvas.height = video.videoHeight
-
-const ctx = canvas.getContext("2d")
-
-ctx.drawImage(video,0,0)
-
-return ctx.getImageData(
-0,
-0,
-canvas.width,
-canvas.height
-)
-
-}
-
-
-// ================= OBJECT CROP =================
-
-function cropObject(frame, box){
-
-const canvas = document.createElement("canvas")
-
-canvas.width = box.width
-canvas.height = box.height
-
-const ctx = canvas.getContext("2d")
-
-const tempCanvas = document.createElement("canvas")
-
-tempCanvas.width = frame.width
-tempCanvas.height = frame.height
-
-const tempCtx = tempCanvas.getContext("2d")
-
-tempCtx.putImageData(frame,0,0)
-
-ctx.drawImage(
-tempCanvas,
-box.x,
-box.y,
-box.width,
-box.height,
-0,
-0,
-box.width,
-box.height
-)
-
-return ctx.getImageData(
-0,
-0,
-box.width,
-box.height
-)
 
 }
