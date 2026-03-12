@@ -1,4 +1,3 @@
-
 // modules/scene/scene-map.js
 
 import { EventBus } from "../core/events.js"
