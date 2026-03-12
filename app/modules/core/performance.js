@@ -1,191 +1,109 @@
-// ================= PERFORMANCE STATE =================
+// modules/core/performance.js
 
-let targetFPS = 20
-let frameInterval = 1000 / targetFPS
+import { EventBus } from "./events.js"
 
-let lastFrameTime = 0
-let frameCount = 0
+class PerformanceManager {
 
-let gpuMode = true
+constructor(){
 
-let memoryLimit = 200 * 1024 * 1024 // 200MB
+this.frameTimes = []
+this.maxSamples = 60
 
+this.lastFrame = performance.now()
 
-// ================= FPS CONTROLLER =================
+this.fps = 0
 
-export function shouldProcessFrame(){
+this.aiTimes = []
+
+this.targetFPS = 30
+
+this.dynamicThrottle = false
+
+}
+
+trackFrame(){
 
 const now = performance.now()
 
-if(now - lastFrameTime < frameInterval){
-return false
+const delta = now - this.lastFrame
+this.lastFrame = now
+
+this.frameTimes.push(delta)
+
+if(this.frameTimes.length > this.maxSamples){
+this.frameTimes.shift()
 }
 
-lastFrameTime = now
-frameCount++
+const avg = this.frameTimes.reduce((a,b)=>a+b,0) / this.frameTimes.length
 
-return true
+this.fps = Math.round(1000 / avg)
 
-}
+EventBus.emit("fpsUpdate", this.fps)
 
-
-// ================= DYNAMIC FPS =================
-
-export function adjustFPS(deviceSpeed){
-
-if(deviceSpeed === "slow"){
-
-targetFPS = 10
+this.adaptiveScaling()
 
 }
 
-else if(deviceSpeed === "medium"){
+startAITimer(){
 
-targetFPS = 15
-
-}
-
-else{
-
-targetFPS = 25
+this.aiStart = performance.now()
 
 }
 
-frameInterval = 1000 / targetFPS
+endAITimer(){
+
+const duration = performance.now() - this.aiStart
+
+this.aiTimes.push(duration)
+
+if(this.aiTimes.length > this.maxSamples){
+this.aiTimes.shift()
+}
+
+EventBus.emit("aiInferenceTime", duration)
 
 }
 
+adaptiveScaling(){
 
-// ================= DEVICE DETECTION =================
+if(this.fps < this.targetFPS - 5){
 
-export function detectDeviceCapability(){
-
-const cores = navigator.hardwareConcurrency || 2
-
-if(cores <= 2){
-
-adjustFPS("slow")
-
-}
-
-else if(cores <= 6){
-
-adjustFPS("medium")
+this.dynamicThrottle = true
+EventBus.emit("performanceThrottle")
 
 }
 
 else{
 
-adjustFPS("fast")
+this.dynamicThrottle = false
 
 }
 
 }
 
+shouldSkipFrame(){
 
-// ================= MEMORY MONITOR =================
-
-export function monitorMemory(){
-
-if(!performance.memory) return
-
-const used = performance.memory.usedJSHeapSize
-
-if(used > memoryLimit){
-
-cleanupMemory()
+return this.dynamicThrottle
 
 }
 
-}
+getStats(){
 
-
-// ================= MEMORY CLEANUP =================
-
-function cleanupMemory(){
-
-console.warn("Memory cleanup triggered")
-
-if(window.gc){
-gc()
-}
-
-}
-
-
-// ================= GPU MODE =================
-
-export function enableGPU(){
-
-gpuMode = true
-
-}
-
-export function disableGPU(){
-
-gpuMode = false
-
-}
-
-export function isGPUEnabled(){
-
-return gpuMode
-
-}
-
-
-// ================= FRAME SKIP =================
-
-let skipCounter = 0
-
-export function shouldSkipFrame(){
-
-skipCounter++
-
-if(skipCounter % 2 === 0){
-
-return true
-
-}
-
-return false
-
-}
-
-
-// ================= MODEL CACHE =================
-
-const modelCache = {}
-
-export function cacheModel(name, model){
-
-modelCache[name] = model
-
-}
-
-export function getCachedModel(name){
-
-return modelCache[name]
-
-}
-
-
-// ================= PERFORMANCE REPORT =================
-
-export function getPerformanceStats(){
+const aiAvg = this.aiTimes.length
+? this.aiTimes.reduce((a,b)=>a+b,0)/this.aiTimes.length
+:0
 
 return {
 
-fps: targetFPS,
-
-framesProcessed: frameCount,
-
-gpu: gpuMode,
-
-memoryUsed: performance.memory
-? performance.memory.usedJSHeapSize
-: null
+fps: this.fps,
+avgAIInference: Math.round(aiAvg),
+framesTracked: this.frameTimes.length
 
 }
 
 }
+
+}
+
+
+export const Performance = new PerformanceManager()
