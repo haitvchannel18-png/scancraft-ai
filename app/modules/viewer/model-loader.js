@@ -1,182 +1,100 @@
-// ================= IMPORT =================
+// modules/viewer/model-loader.js
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
 
-// ThreeJS loaders
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
-import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js"
-import { DRACOLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/DRACOLoader.js"
+let THREE = window.THREE
 
+let loader = null
 
-
-// ================= GLOBAL =================
-
-let loader
-let dracoLoader
-let modelCache = new Map()
-
-
-
-// ================= INIT =================
+const MODEL_PATH = "/models/vision/"
 
 export function initModelLoader(){
 
-loader = new GLTFLoader()
+if(loader) return loader
 
-dracoLoader = new DRACOLoader()
+loader = new THREE.GLTFLoader()
 
-dracoLoader.setDecoderPath(
-"https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/libs/draco/"
-)
+EventBus.emit("modelLoaderReady")
 
-loader.setDRACOLoader(dracoLoader)
+return loader
 
 }
 
 
 
-// ================= LOAD MODEL =================
+export async function loadModel(objectLabel){
 
-export async function loadModel(modelPath){
+if(!loader){
+initModelLoader()
+}
+
+const file = getModelFile(objectLabel)
 
 try{
 
-// CACHE CHECK
-if(modelCache.has(modelPath)){
+const model = await loadGLB(file)
 
-return cloneModel(modelCache.get(modelPath))
+EventBus.emit("modelLoaded",{
+label:objectLabel,
+model
+})
 
-}
-
-emit("viewer:model-loading", modelPath)
-
-const gltf = await loader.loadAsync(modelPath)
-
-const model = gltf.scene
-
-prepareModel(model)
-
-modelCache.set(modelPath, model)
-
-emit("viewer:model-loaded", model)
-
-return cloneModel(model)
+return model
 
 }catch(err){
 
-console.error("Model loading failed", err)
+console.warn("3D model not found, fallback model used")
 
-emit("viewer:model-error", err)
+const fallback = await loadGLB("model.glb")
 
-throw err
-
-}
-
-}
-
-
-
-// ================= PREPARE MODEL =================
-
-function prepareModel(model){
-
-model.traverse(obj => {
-
-if(obj.isMesh){
-
-obj.castShadow = true
-obj.receiveShadow = true
-
-if(obj.material){
-
-obj.material.metalness = obj.material.metalness || 0.3
-obj.material.roughness = obj.material.roughness || 0.7
+return fallback
 
 }
 
 }
+
+
+
+function getModelFile(label){
+
+const name = label.toLowerCase()
+
+const models = {
+
+bottle:"bottle.glb",
+chair:"chair.glb",
+laptop:"laptop.glb",
+phone:"phone.glb",
+car:"car.glb"
+
+}
+
+return models[name] || "model.glb"
+
+}
+
+
+
+function loadGLB(file){
+
+return new Promise((resolve,reject)=>{
+
+loader.load(
+
+MODEL_PATH + file,
+
+gltf=>{
+
+resolve(gltf.scene)
+
+},
+
+undefined,
+
+err=>reject(err)
+
+)
 
 })
-
-centerModel(model)
-
-}
-
-
-
-// ================= CENTER MODEL =================
-
-function centerModel(model){
-
-const box = new THREE.Box3().setFromObject(model)
-
-const center = new THREE.Vector3()
-
-box.getCenter(center)
-
-model.position.sub(center)
-
-}
-
-
-
-// ================= SCALE MODEL =================
-
-export function scaleModel(model, targetSize = 2){
-
-const box = new THREE.Box3().setFromObject(model)
-
-const size = new THREE.Vector3()
-
-box.getSize(size)
-
-const maxDim = Math.max(size.x, size.y, size.z)
-
-const scale = targetSize / maxDim
-
-model.scale.setScalar(scale)
-
-}
-
-
-
-// ================= CLONE MODEL =================
-
-function cloneModel(model){
-
-return model.clone(true)
-
-}
-
-
-
-// ================= LOAD BY OBJECT =================
-
-export async function loadModelFromObject(object){
-
-// simple mapping
-
-const name = object.label?.toLowerCase()
-
-let modelPath = CONFIG.MODEL_PATH + "default.glb"
-
-if(name.includes("chair")) modelPath = CONFIG.MODEL_PATH + "chair.glb"
-
-if(name.includes("bottle")) modelPath = CONFIG.MODEL_PATH + "bottle.glb"
-
-if(name.includes("phone")) modelPath = CONFIG.MODEL_PATH + "phone.glb"
-
-return loadModel(modelPath)
-
-}
-
-
-
-// ================= CLEAR CACHE =================
-
-export function clearModelCache(){
-
-modelCache.clear()
 
 }
