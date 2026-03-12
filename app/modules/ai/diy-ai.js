@@ -1,182 +1,154 @@
-// ================= IMPORTS =================
+// modules/ai/diy-ai.js
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
 
+import { getMaterialInfo } from "../knowledge/material-db.js"
+import { logAI } from "../utils/ai-logger.js"
+import { cacheKnowledge } from "../memory/cache-manager.js"
 
+let activeObject = null
+let diyCache = null
 
-// ================= STATE =================
+export function initDIYAI(){
 
-let currentObject = null
+EventBus.on("objectBrainComplete",setObjectContext)
 
-
-
-// ================= SET OBJECT =================
-
-export function setDIYObject(object){
-
-currentObject = object
-
-emit("diy:object:set", object)
+EventBus.emit("diyAIReady")
 
 }
 
 
 
-// ================= MAIN GENERATOR =================
+function setObjectContext(payload){
 
-export async function generateDIYIdeas(){
-
-if(!currentObject){
-
-emit("diy:error","No object selected")
-
-return []
+activeObject = payload
 
 }
 
-emit("diy:start")
+
+
+export async function generateDIYIdeas(objectName){
 
 try{
 
-const ideas = await buildDIYIdeas(currentObject)
+if(!objectName && activeObject){
+objectName = activeObject.object
+}
 
-emit("diy:complete", ideas)
+if(!objectName){
+return null
+}
 
-return ideas
+const materials = await getMaterialInfo(objectName)
+
+const ideas = buildDIYIdeas(objectName,materials)
+
+const result = {
+
+object: objectName,
+
+materials,
+
+ideas,
+
+generatedAt: Date.now()
+
+}
+
+diyCache = result
+
+cacheKnowledge("diy-"+objectName,result)
+
+EventBus.emit("diyIdeasReady",result)
+
+logAI("DIYIdeas",result)
+
+return result
 
 }catch(err){
 
-console.error("DIY generation failed", err)
+console.error("DIY AI error",err)
 
-emit("diy:error")
+EventBus.emit("diyAIError",err)
 
-return []
-
-}
+return null
 
 }
 
+}
 
 
-// ================= IDEA ENGINE =================
 
-async function buildDIYIdeas(object){
-
-const name = object.name.toLowerCase()
+function buildDIYIdeas(objectName,materials){
 
 const ideas = []
 
-
+const name = objectName.toLowerCase()
 
 if(name.includes("bottle")){
 
 ideas.push({
-
-title:"Bottle Plant Pot",
-
-description:"Turn the bottle into a hanging plant pot",
-
-steps:[
-"Cut bottle in half",
-"Add soil",
-"Insert small plant",
-"Hang using rope"
-]
-
+title:"Plant Pot",
+description:"Cut the bottle and use it as a small plant pot."
 })
 
 ideas.push({
+title:"DIY Lamp",
+description:"Add LED lights inside to create a decorative lamp."
+})
 
-title:"Bottle Lamp",
-
-description:"Create decorative lamp using LED lights",
-
-steps:[
-"Insert LED string",
-"Decorate bottle surface",
-"Connect power source"
-]
-
+ideas.push({
+title:"Storage Container",
+description:"Use the bottle to store small screws or tools."
 })
 
 }
 
-
-
-else if(name.includes("chair")){
+if(name.includes("chair")){
 
 ideas.push({
-
-title:"Chair Repair",
-
-description:"Fix loose chair legs",
-
-steps:[
-"Remove damaged screws",
-"Apply wood glue",
-"Tighten new screws"
-]
-
+title:"Chair Repaint",
+description:"Repaint the chair using spray paint for a modern look."
 })
 
 ideas.push({
-
-title:"Chair Shelf",
-
-description:"Convert old chair into wall shelf",
-
-steps:[
-"Cut chair seat",
-"Attach to wall",
-"Use as storage shelf"
-]
-
+title:"Cushion Upgrade",
+description:"Add soft foam cushions to increase comfort."
 })
 
 }
 
-
-
-else if(name.includes("box") || name.includes("container")){
+if(name.includes("phone")){
 
 ideas.push({
+title:"DIY Phone Stand",
+description:"Use cardboard or plastic to build a phone stand."
+})
 
-title:"Storage Organizer",
-
-description:"Convert container into desk organizer",
-
-steps:[
-"Clean container",
-"Divide sections",
-"Store office tools"
-]
-
+ideas.push({
+title:"Lens Macro Attachment",
+description:"Attach a small lens to convert camera into macro camera."
 })
 
 }
 
-
-
-else{
+if(materials && materials.includes("plastic")){
 
 ideas.push({
-
-title:`Creative Reuse of ${object.name}`,
-
-description:`Repurpose ${object.name} into a creative DIY project`,
-
-steps:[
-"Analyze object shape",
-"Design creative idea",
-"Assemble using simple tools"
-]
-
+title:"Recycled Craft",
+description:"Melt and reshape plastic into new creative objects."
 })
 
 }
 
+if(materials && materials.includes("wood")){
 
+ideas.push({
+title:"Wood Polishing",
+description:"Sand and polish wood surface to restore finish."
+})
+
+}
 
 return ideas
 
@@ -184,65 +156,18 @@ return ideas
 
 
 
-// ================= REPAIR GUIDE =================
+export function getLastDIYIdeas(){
 
-export function generateRepairGuide(object){
-
-return {
-
-title:`Repair Guide for ${object.name}`,
-
-tools:["screwdriver","glue","replacement parts"],
-
-steps:[
-"Inspect damaged part",
-"Remove broken components",
-"Install replacement parts",
-"Test functionality"
-]
-
-}
+return diyCache
 
 }
 
 
 
-// ================= MATERIAL REUSE =================
+export function clearDIYIdeas(){
 
-export function suggestMaterialReuse(object){
+diyCache = null
 
-const reuse = []
-
-reuse.push(`Use ${object.name} parts for craft projects`)
-reuse.push(`Recycle materials from ${object.name}`)
-reuse.push(`Convert ${object.name} into decorative item`)
-
-return reuse
-
-}
-
-
-
-// ================= DIY SCORE =================
-
-export function diyCreativityScore(object){
-
-let score = 60
-
-if(object.category === "container") score += 20
-if(object.category === "furniture") score += 15
-if(object.category === "electronics") score += 10
-
-return Math.min(score,100)
-
-}
-
-
-
-// ================= SUMMARY =================
-
-export function summarizeDIY(ideas){
-
-return ideas.map(i => i.title)
+EventBus.emit("diyIdeasCleared")
 
 }
