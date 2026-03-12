@@ -1,161 +1,168 @@
-// ================= IMPORTS =================
+// modules/ai/similarity.js
 
-import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { findSimilarObjects } from "../vision-search/similarity-engine.js"
+import { EventBus } from "../core/events.js"
+import { getMaterialInfo } from "../knowledge/material-db.js"
+import { searchProductDB } from "../knowledge/product-db.js"
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { cacheKnowledge } from "../memory/cache-manager.js"
+import { logAI } from "../utils/ai-logger.js"
 
+let lastComparison = null
 
-
-// ================= STATE =================
-
-let similarityResults = []
-let currentObject = null
-
-
-
-// ================= MAIN ENTRY =================
-
-export async function runSimilaritySearch(image){
+export async function compareObjects(objectA, objectB){
 
 try{
 
-emit("similarity:start")
+if(!objectA || !objectB){
+return null
+}
 
-// 1️⃣ extract visual features
+const infoA = await collectObjectInfo(objectA)
+const infoB = await collectObjectInfo(objectB)
 
-const features = await extractFeatures(image)
+const score = calculateSimilarity(infoA,infoB)
 
+const explanation = buildExplanation(infoA,infoB,score)
 
-// 2️⃣ similarity search
+const result = {
 
-const matches = await findSimilarObjects(features)
+objectA,
+objectB,
 
+similarityScore: score,
 
-// 3️⃣ ranking
+materialsMatch: compareMaterials(infoA.materials,infoB.materials),
 
-similarityResults = rankResults(matches)
+categoryMatch: infoA.category === infoB.category,
 
-emit("similarity:complete", similarityResults)
+analysis: explanation,
 
-return similarityResults
+generatedAt: Date.now()
+
+}
+
+lastComparison = result
+
+cacheKnowledge("similarity-"+objectA+"-"+objectB,result)
+
+EventBus.emit("similarityComparisonReady",result)
+
+logAI("SimilarityComparison",result)
+
+return result
 
 }catch(err){
 
-console.error("Similarity search failed", err)
+console.error("Similarity AI error",err)
 
-emit("similarity:error")
-
-return []
-
-}
-
-}
-
-
-
-// ================= RANKING =================
-
-function rankResults(results){
-
-return results
-.sort((a,b)=> b.score - a.score)
-.slice(0, CONFIG.MAX_SIMILAR_RESULTS || 5)
-
-}
-
-
-
-// ================= SET OBJECT =================
-
-export function setSimilarityObject(object){
-
-currentObject = object
-
-emit("similarity:object:set", object)
-
-}
-
-
-
-// ================= GET BEST MATCH =================
-
-export function getBestMatch(){
-
-if(!similarityResults || similarityResults.length === 0){
+EventBus.emit("similarityAIError",err)
 
 return null
 
 }
 
-return similarityResults[0]
+}
+
+
+
+async function collectObjectInfo(objectName){
+
+const materials = await getMaterialInfo(objectName)
+
+const product = await searchProductDB(objectName)
+
+return {
+
+object: objectName,
+
+materials: materials || [],
+
+category: product?.category || "unknown"
+
+}
 
 }
 
 
 
-// ================= FILTER CATEGORY =================
+function calculateSimilarity(a,b){
 
-export function filterByCategory(category){
+let score = 0
 
-return similarityResults.filter(item => item.category === category)
+if(a.category === b.category){
+score += 0.4
+}
+
+const materialScore = computeMaterialSimilarity(a.materials,b.materials)
+
+score += materialScore
+
+return Math.min(score,1)
 
 }
 
 
 
-// ================= CONFIDENCE =================
+function computeMaterialSimilarity(matA,matB){
 
-export function computeSimilarityConfidence(result){
+if(!matA || !matB) return 0
 
-if(!result) return 0
+const common = matA.filter(m => matB.includes(m))
 
-const base = result.score || 0
-
-return Math.min(base,1)
+return common.length / Math.max(matA.length,matB.length) * 0.6
 
 }
 
 
 
-// ================= SUMMARY =================
+function compareMaterials(matA,matB){
 
-export function summarizeSimilarity(){
+if(!matA || !matB) return []
 
-return similarityResults.map(r => {
-
-return `${r.label} (${Math.round(r.score*100)}%)`
-
-})
+return matA.filter(m => matB.includes(m))
 
 }
 
 
 
-// ================= RELATED OBJECTS =================
+function buildExplanation(a,b,score){
 
-export function getRelatedObjects(){
+let text = `Comparison between ${a.object} and ${b.object}:\n`
 
-return similarityResults.map(r => ({
+if(a.category === b.category){
 
-name:r.label,
-score:r.score,
-category:r.category
+text += "Both objects belong to the same category.\n"
 
-}))
+}
+
+const common = compareMaterials(a.materials,b.materials)
+
+if(common.length){
+
+text += `They share similar materials such as ${common.join(", ")}.\n`
+
+}
+
+text += `Overall similarity score: ${(score*100).toFixed(1)}%.`
+
+return text
 
 }
 
 
 
-// ================= RESET =================
+export function getLastComparison(){
 
-export function resetSimilarity(){
+return lastComparison
 
-similarityResults = []
-currentObject = null
+}
 
-emit("similarity:reset")
+
+
+export function clearComparison(){
+
+lastComparison = null
+
+EventBus.emit("similarityComparisonCleared")
 
 }
