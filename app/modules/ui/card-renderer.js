@@ -1,235 +1,147 @@
-// ================= IMPORT =================
+// modules/ui/card-renderer.js
 
-import { on } from "../core/events.js"
-import { animateCardReveal } from "./animation-engine.js"
+import { EventBus } from "../core/events.js"
 
+let container
 
+export function initCardRenderer(containerId="card-container"){
 
-// ================= DOM =================
+container = document.getElementById(containerId)
 
-let cardContainer
-
-
-
-// ================= INIT =================
-
-export function initCardRenderer(){
-
-cardContainer = document.getElementById("ai-result-cards")
-
-listenCardEvents()
+attachEvents()
 
 }
 
+function attachEvents(){
 
+EventBus.on("renderProductCards",renderProductCards)
 
-// ================= EVENTS =================
+EventBus.on("renderImageCards",renderImageCards)
 
-function listenCardEvents(){
-
-on("ai:object-info", renderObjectCard)
-
-on("ai:image-results", renderImageGallery)
-
-on("ai:price-results", renderPriceCards)
-
-on("ai:material-results", renderMaterialCard)
-
-on("ai:history-results", renderHistoryCard)
+EventBus.on("renderInfoCards",renderInfoCards)
 
 }
-
-
-
-// ================= OBJECT CARD =================
-
-function renderObjectCard(data){
-
-const card = document.createElement("div")
-
-card.className = "ai-card object-card"
-
-card.innerHTML = `
-
-<div class="card-header">
-<div class="card-icon">📦</div>
-<div class="card-title">${escapeHTML(data.name)}</div>
-</div>
-
-<div class="card-body">
-${escapeHTML(data.description)}
-</div>
-
-`
-
-appendCard(card)
-
-}
-
-
-
-// ================= IMAGE GALLERY =================
-
-function renderImageGallery(images){
-
-const card = document.createElement("div")
-
-card.className = "ai-card image-gallery"
-
-let html = `<div class="card-header">Images</div>`
-
-html += `<div class="gallery-grid">`
-
-images.forEach(img => {
-
-html += `<img src="${img}" class="gallery-img">`
-
-})
-
-html += `</div>`
-
-card.innerHTML = html
-
-appendCard(card)
-
-}
-
-
-
-// ================= PRICE CARDS =================
-
-function renderPriceCards(products){
-
-const card = document.createElement("div")
-
-card.className = "ai-card price-card"
-
-let html = `<div class="card-header">Buy Online</div>`
-
-html += `<div class="price-grid">`
-
-products.forEach(p => {
-
-html += `
-
-<div class="price-item">
-
-<div class="store">${p.marketplace}</div>
-
-<div class="price">${p.priceRange}</div>
-
-<a href="${p.link}" target="_blank">View</a>
-
-</div>
-
-`
-
-})
-
-html += `</div>`
-
-card.innerHTML = html
-
-appendCard(card)
-
-}
-
-
-
-// ================= MATERIAL CARD =================
-
-function renderMaterialCard(data){
-
-const card = document.createElement("div")
-
-card.className = "ai-card material-card"
-
-card.innerHTML = `
-
-<div class="card-header">Material</div>
-
-<div class="card-body">
-${escapeHTML(data.material)}
-</div>
-
-`
-
-appendCard(card)
-
-}
-
-
-
-// ================= HISTORY CARD =================
-
-function renderHistoryCard(data){
-
-const card = document.createElement("div")
-
-card.className = "ai-card history-card"
-
-card.innerHTML = `
-
-<div class="card-header">History</div>
-
-<div class="card-body">
-${escapeHTML(data.history)}
-</div>
-
-`
-
-appendCard(card)
-
-}
-
-
-
-// ================= APPEND CARD =================
-
-function appendCard(card){
-
-cardContainer.appendChild(card)
-
-animateCardReveal(card)
-
-scrollToBottom()
-
-}
-
-
-
-// ================= SCROLL =================
-
-function scrollToBottom(){
-
-cardContainer.scrollTop = cardContainer.scrollHeight
-
-}
-
-
-
-// ================= SECURITY =================
-
-function escapeHTML(text){
-
-const div = document.createElement("div")
-
-div.innerText = text
-
-return div.innerHTML
-
-}
-
-
-
-// ================= CLEAR =================
 
 export function clearCards(){
 
-if(cardContainer){
+if(!container) return
 
-cardContainer.innerHTML = ""
+container.innerHTML = ""
 
 }
+
+function createCard(){
+
+const card = document.createElement("div")
+card.className = "info-card"
+
+return card
+
+}
+
+function renderProductCards(products){
+
+clearCards()
+
+products.forEach(product=>{
+
+const card = createCard()
+
+const img = document.createElement("img")
+img.src = product.image || ""
+img.className = "card-image"
+
+const title = document.createElement("h3")
+title.textContent = product.title || "Product"
+
+const price = document.createElement("p")
+price.className = "card-price"
+price.textContent = product.price || ""
+
+const link = document.createElement("a")
+link.href = product.url || "#"
+link.target = "_blank"
+link.textContent = "View"
+
+card.appendChild(img)
+card.appendChild(title)
+card.appendChild(price)
+card.appendChild(link)
+
+container.appendChild(card)
+
+})
+
+}
+
+function renderImageCards(images){
+
+clearCards()
+
+images.forEach(src=>{
+
+const card = createCard()
+
+const img = document.createElement("img")
+img.src = src
+img.className = "card-image"
+
+card.appendChild(img)
+
+container.appendChild(card)
+
+})
+
+}
+
+function renderInfoCards(infoList){
+
+clearCards()
+
+infoList.forEach(info=>{
+
+const card = createCard()
+
+const title = document.createElement("h3")
+title.textContent = info.title || ""
+
+const text = document.createElement("p")
+text.textContent = info.text || ""
+
+card.appendChild(title)
+card.appendChild(text)
+
+container.appendChild(card)
+
+})
+
+}
+
+export function renderSingleCard(title,text,image){
+
+clearCards()
+
+const card = createCard()
+
+const t = document.createElement("h3")
+t.textContent = title
+
+const p = document.createElement("p")
+p.textContent = text
+
+card.appendChild(t)
+card.appendChild(p)
+
+if(image){
+
+const img = document.createElement("img")
+img.src = image
+img.className = "card-image"
+
+card.appendChild(img)
+
+}
+
+container.appendChild(card)
 
 }
