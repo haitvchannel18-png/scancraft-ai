@@ -1,263 +1,155 @@
-// ================= IMPORT =================
+// modules/viewer/viewer.js
 
-import { on, emit } from "../core/events.js"
-import { loadModelFromObject, scaleModel } from "./model-loader.js"
+import { EventBus } from "../core/events.js"
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js"
-
-
-
-// ================= GLOBAL =================
+let THREE = window.THREE
 
 let scene
 let camera
 let renderer
 let controls
-let container
-let currentModel
-let clock = new THREE.Clock()
+let currentModel = null
 
+let animationId
 
-
-// ================= INIT =================
-
-export function initViewer(){
-
-container = document.getElementById("viewer-container")
-
-if(!container) return
-
-createScene()
-createRenderer()
-createCamera()
-createLights()
-createControls()
-
-window.addEventListener("resize", resizeViewer)
-
-animate()
-
-listenViewerEvents()
-
-}
-
-
-
-// ================= SCENE =================
-
-function createScene(){
+export function initViewer(canvas){
 
 scene = new THREE.Scene()
 
-scene.background = new THREE.Color(0x050510)
-
-}
-
-
-
-// ================= CAMERA =================
-
-function createCamera(){
-
 camera = new THREE.PerspectiveCamera(
-
 60,
-container.clientWidth / container.clientHeight,
+canvas.clientWidth / canvas.clientHeight,
 0.1,
 1000
-
 )
 
-camera.position.set(0,1.5,4)
-
-scene.add(camera)
-
-}
-
-
-
-// ================= RENDERER =================
-
-function createRenderer(){
+camera.position.set(0,1.5,3)
 
 renderer = new THREE.WebGLRenderer({
-
+canvas:canvas,
 antialias:true,
 alpha:true
-
 })
+
+renderer.setSize(canvas.clientWidth,canvas.clientHeight)
 
 renderer.setPixelRatio(window.devicePixelRatio)
 
-renderer.setSize(
+setupLights()
 
-container.clientWidth,
-container.clientHeight
+controls = new THREE.OrbitControls(camera,renderer.domElement)
 
-)
+controls.enableDamping = true
 
-renderer.shadowMap.enabled = true
+startRenderLoop()
 
-container.appendChild(renderer.domElement)
+EventBus.emit("viewerReady")
 
 }
 
 
 
-// ================= LIGHTING =================
-
-function createLights(){
+function setupLights(){
 
 const ambient = new THREE.AmbientLight(0xffffff,0.6)
 scene.add(ambient)
 
-const dirLight = new THREE.DirectionalLight(0xffffff,1)
+const dir = new THREE.DirectionalLight(0xffffff,1)
+dir.position.set(5,10,7)
 
-dirLight.position.set(4,6,4)
-
-dirLight.castShadow = true
-
-scene.add(dirLight)
+scene.add(dir)
 
 }
 
 
 
-// ================= CONTROLS =================
-
-function createControls(){
-
-controls = new OrbitControls(camera,renderer.domElement)
-
-controls.enableDamping = true
-
-controls.dampingFactor = 0.05
-
-controls.enablePan = true
-
-controls.minDistance = 1
-controls.maxDistance = 10
-
-}
-
-
-
-// ================= LOAD MODEL =================
-
-async function openViewer(object){
-
-emit("viewer:opening")
+export function loadModelToScene(model){
 
 if(currentModel){
-
 scene.remove(currentModel)
-
 }
-
-const model = await loadModelFromObject(object)
-
-scaleModel(model)
-
-scene.add(model)
 
 currentModel = model
 
-emit("viewer:model-ready",object)
+scene.add(model)
+
+centerModel(model)
+
+EventBus.emit("viewerModelLoaded",model)
 
 }
 
 
 
-// ================= EVENTS =================
+function centerModel(model){
 
-function listenViewerEvents(){
+const box = new THREE.Box3().setFromObject(model)
 
-on("viewer:open", openViewer)
+const center = box.getCenter(new THREE.Vector3())
+
+model.position.sub(center)
 
 }
 
 
 
-// ================= ANIMATION LOOP =================
+function startRenderLoop(){
 
 function animate(){
 
-requestAnimationFrame(animate)
+animationId = requestAnimationFrame(animate)
 
-const delta = clock.getDelta()
-
-if(controls){
-
-controls.update(delta)
-
-}
+if(controls) controls.update()
 
 renderer.render(scene,camera)
 
 }
 
-
-
-// ================= RESIZE =================
-
-function resizeViewer(){
-
-if(!renderer) return
-
-camera.aspect = container.clientWidth / container.clientHeight
-
-camera.updateProjectionMatrix()
-
-renderer.setSize(
-
-container.clientWidth,
-container.clientHeight
-
-)
+animate()
 
 }
 
 
 
-// ================= CAMERA RESET =================
-
-export function resetCamera(){
-
-camera.position.set(0,1.5,4)
-
-controls.reset()
-
+export function getScene(){
+return scene
 }
 
-
-
-// ================= ROTATE MODEL =================
-
-export function rotateModel(speed = 0.01){
-
-if(!currentModel) return
-
-currentModel.rotation.y += speed
-
+export function getCamera(){
+return camera
 }
 
-
-
-// ================= MODEL INFO =================
+export function getRenderer(){
+return renderer
+}
 
 export function getCurrentModel(){
-
 return currentModel
+}
+
+
+
+export function resizeViewer(width,height){
+
+if(!renderer || !camera) return
+
+camera.aspect = width / height
+camera.updateProjectionMatrix()
+
+renderer.setSize(width,height)
 
 }
 
 
 
-// ================= SCREENSHOT =================
+export function destroyViewer(){
 
-export function captureViewerImage(){
+cancelAnimationFrame(animationId)
 
-return renderer.domElement.toDataURL("image/png")
+renderer.dispose()
+
+scene.clear()
+
+EventBus.emit("viewerDestroyed")
 
 }
