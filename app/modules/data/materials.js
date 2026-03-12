@@ -1,233 +1,107 @@
-// ================= IMPORTS =================
+// modules/data/materials.js
 
-import { emit } from "../core/events.js"
-
-
-
-// ================= MATERIAL DATABASE =================
+import { EventBus } from "../core/events.js"
 
 const MATERIAL_DB = {
 
-bicycle:[
-{
-name:"Steel",
-properties:["high strength","durable","cost effective"],
-usage:"Frame construction"
-},
-{
-name:"Aluminum",
-properties:["lightweight","corrosion resistant"],
-usage:"Modern bicycle frames"
-},
-{
-name:"Rubber",
-properties:["flexible","shock absorbing"],
-usage:"Tires"
-}
-],
-
-headphones:[
-{
-name:"Plastic",
-properties:["lightweight","moldable"],
-usage:"Headphone body"
-},
-{
+metal:{
 name:"Metal",
-properties:["durable","strong"],
-usage:"Driver housing"
+strength:"High",
+durability:"Very high",
+weight:"Medium to heavy",
+ecoImpact:"Recyclable",
+uses:["vehicles","tools","machines","structures"]
 },
-{
-name:"Foam",
-properties:["soft","sound insulation"],
-usage:"Ear cushions"
-}
-],
 
-phone:[
-{
+plastic:{
+name:"Plastic",
+strength:"Medium",
+durability:"Medium",
+weight:"Light",
+ecoImpact:"Low biodegradability",
+uses:["containers","electronics casing","bottles","toys"]
+},
+
+glass:{
 name:"Glass",
-properties:["smooth","scratch resistant"],
-usage:"Display panel"
+strength:"Low impact resistance",
+durability:"High if handled carefully",
+weight:"Medium",
+ecoImpact:"Highly recyclable",
+uses:["bottles","windows","optics","containers"]
 },
-{
-name:"Aluminum",
-properties:["lightweight","strong"],
-usage:"Frame"
-},
-{
-name:"Lithium",
-properties:["high energy density"],
-usage:"Battery"
-}
-],
 
-chair:[
-{
+wood:{
 name:"Wood",
-properties:["strong","natural","renewable"],
-usage:"Chair structure"
-},
-{
-name:"Metal",
-properties:["durable","rigid"],
-usage:"Support frame"
-},
-{
-name:"Plastic",
-properties:["lightweight","cheap"],
-usage:"Seat molding"
-}
-]
-
-}
-
-
-
-// ================= MAIN FUNCTION =================
-
-export async function getMaterialInfo(objectName){
-
-try{
-
-emit("materials:search:start", objectName)
-
-const key = objectName?.toLowerCase()
-
-let materials = MATERIAL_DB[key]
-
-if(!materials){
-
-materials = generateGenericMaterials(objectName)
-
-}
-
-emit("materials:search:complete", materials)
-
-return materials
-
-}catch(err){
-
-console.error("Material search failed", err)
-
-emit("materials:error")
-
-return []
-
-}
-
-}
-
-
-
-// ================= GENERIC MATERIAL ESTIMATION =================
-
-function generateGenericMaterials(objectName){
-
-return [
-
-{
-name:"Composite materials",
-properties:["durable","multi purpose"],
-usage:`Used in ${objectName} structure`
+strength:"Medium",
+durability:"Moderate",
+weight:"Medium",
+ecoImpact:"Biodegradable",
+uses:["furniture","construction","decor"]
 },
 
-{
-name:"Metal components",
-properties:["structural support"],
-usage:`Internal framework of ${objectName}`
+ceramic:{
+name:"Ceramic",
+strength:"Hard but brittle",
+durability:"High temperature resistance",
+weight:"Medium",
+ecoImpact:"Natural mineral based",
+uses:["tiles","pottery","insulation"]
 },
 
-{
-name:"Polymer materials",
-properties:["lightweight","moldable"],
-usage:`External casing of ${objectName}`
-}
-
-]
-
-}
-
-
-
-// ================= MATERIAL SUMMARY =================
-
-export function summarizeMaterials(materials){
-
-return materials.map(m => m.name)
-
-}
-
-
-
-// ================= MATERIAL DETAILS =================
-
-export function getMaterialProperties(materialName){
-
-for(const obj in MATERIAL_DB){
-
-const match = MATERIAL_DB[obj].find(m => m.name === materialName)
-
-if(match){
-
-return match.properties
-
+rubber:{
+name:"Rubber",
+strength:"Elastic",
+durability:"High flexibility",
+weight:"Light",
+ecoImpact:"Moderate",
+uses:["tires","seals","grips"]
 }
 
 }
 
-return []
+
+
+export async function getMaterialInfo(material){
+
+if(!material) return null
+
+if(MATERIAL_DB[material]){
+
+EventBus.emit("materialFound",material)
+
+return MATERIAL_DB[material]
+
+}
+
+return inferMaterial(material)
 
 }
 
 
 
-// ================= MATERIAL REUSE =================
+function inferMaterial(material){
 
-export function suggestMaterialReuse(materialName){
+// fallback reasoning for unknown materials
 
-const reuseIdeas = []
+const guess = {
 
-if(materialName === "Wood"){
+name: material,
 
-reuseIdeas.push("Furniture repair")
-reuseIdeas.push("Craft projects")
-reuseIdeas.push("Decorative items")
+strength:"Unknown",
 
-}
+durability:"Unknown",
 
-if(materialName === "Metal"){
+weight:"Unknown",
 
-reuseIdeas.push("Recycling")
-reuseIdeas.push("Mechanical parts reuse")
+ecoImpact:"Unknown",
 
-}
-
-if(materialName === "Plastic"){
-
-reuseIdeas.push("DIY containers")
-reuseIdeas.push("Recycling plastic items")
+uses:["general purpose"]
 
 }
 
-return reuseIdeas
+EventBus.emit("materialInferred",material)
 
-}
-
-
-
-// ================= MATERIAL SCORE =================
-
-export function computeMaterialQuality(material){
-
-if(!material) return 0
-
-let score = 50
-
-if(material.properties.includes("durable")) score += 20
-if(material.properties.includes("lightweight")) score += 10
-if(material.properties.includes("strong")) score += 20
-
-return Math.min(score,100)
+return guess
 
 }
