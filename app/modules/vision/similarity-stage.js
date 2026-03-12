@@ -1,58 +1,54 @@
-// ================= IMPORT =================
+// modules/vision/similarity-stage.js
 
+import { EventBus } from "../core/events.js"
 import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { findSimilarObjects } from "../vision-search/similarity-engine.js"
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { searchSimilar } from "../vision-search/similarity-search.js"
 
+const MAX_RESULTS = 5
+const MIN_SIMILARITY = 0.25
 
-
-// ================= CONFIG =================
-
-const SIMILARITY_THRESHOLD = CONFIG.SIMILARITY_THRESHOLD || 0.65
-const MAX_RESULTS = CONFIG.MAX_SIMILAR_RESULTS || 8
-
-
-
-// ================= MAIN STAGE =================
-
-export async function runSimilarityStage(frame, detections){
+export async function runSimilarityStage(frame, objects){
 
 try{
 
-emit("vision:similarity:start")
+EventBus.emit("visionStageStart","similarity")
+
+if(!objects || objects.length === 0){
+return []
+}
 
 const results = []
 
-for(const object of detections){
+for(const obj of objects){
 
-const crop = cropObject(frame, object)
+const crop = cropObject(frame,obj.bbox)
 
 const features = await extractFeatures(crop)
 
-const matches = await findSimilarObjects(features)
+const matches = await searchSimilar(features)
 
 const filtered = filterMatches(matches)
 
 results.push({
 
-object: object.label,
-similar: filtered,
-bestMatch: filtered[0] || null
+object: obj.label,
+confidence: obj.confidence,
+bbox: obj.bbox,
+similar: filtered
 
 })
 
 }
 
-emit("vision:similarity:complete", results)
+EventBus.emit("visionSimilarityComplete",results)
 
 return results
 
 }catch(err){
 
-console.error("Similarity stage error", err)
+console.error("Similarity stage error",err)
 
-emit("vision:similarity:error")
+EventBus.emit("visionSimilarityError",err)
 
 return []
 
@@ -62,114 +58,50 @@ return []
 
 
 
-// ================= CROP OBJECT =================
-
-function cropObject(frame, object){
-
-const canvas = document.createElement("canvas")
-const ctx = canvas.getContext("2d")
-
-const width = frame.videoWidth || frame.width
-const height = frame.videoHeight || frame.height
-
-canvas.width = object.width * width
-canvas.height = object.height * height
-
-ctx.drawImage(
-
-frame,
-
-object.x * width,
-object.y * height,
-object.width * width,
-object.height * height,
-
-0,
-0,
-canvas.width,
-canvas.height
-
-)
-
-return canvas
-
-}
-
-
-
-// ================= FILTER MATCHES =================
-
 function filterMatches(matches){
 
 if(!matches) return []
 
 return matches
-.filter(m => m.score >= SIMILARITY_THRESHOLD)
+.filter(m => m.score >= MIN_SIMILARITY)
 .sort((a,b)=> b.score - a.score)
-.slice(0, MAX_RESULTS)
+.slice(0,MAX_RESULTS)
 
 }
 
 
 
-// ================= BEST MATCH =================
+function cropObject(frame,bbox){
 
-export function getBestSimilarity(results){
+const {x,y,width,height} = bbox
 
-if(!results || results.length === 0) return null
+try{
 
-return results.reduce((best,current)=>{
+const canvas = document.createElement("canvas")
+const ctx = canvas.getContext("2d")
 
-const scoreA = best.bestMatch?.score || 0
-const scoreB = current.bestMatch?.score || 0
+canvas.width = width
+canvas.height = height
 
-return scoreB > scoreA ? current : best
+ctx.drawImage(
+frame,
+x,
+y,
+width,
+height,
+0,
+0,
+width,
+height
+)
 
-})
+return canvas
 
-}
+}catch(err){
 
+console.warn("Object crop failed",err)
 
-
-// ================= SIMILARITY SUMMARY =================
-
-export function similaritySummary(results){
-
-return results.map(r => {
-
-if(!r.bestMatch){
-
-return `${r.object} → unknown`
-
-}
-
-return `${r.object} → ${r.bestMatch.label} ${(r.bestMatch.score*100).toFixed(0)}%`
-
-})
-
-}
-
-
-
-// ================= UNKNOWN GUESS =================
-
-export function guessUnknownObject(result){
-
-if(!result || !result.bestMatch){
-
-return {
-
-guess: "unknown object",
-confidence: 0
-
-}
-
-}
-
-return {
-
-guess: result.bestMatch.label,
-confidence: result.bestMatch.score
+return frame
 
 }
 
