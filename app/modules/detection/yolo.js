@@ -1,44 +1,23 @@
-// ================= IMPORTS =================
+// modules/detection/yolo.js
 
-import { emit } from "../core/events.js"
-import { getCachedModel, cacheModel } from "../core/performance.js"
+import { EventBus } from "../core/events.js"
 
 let session = null
+let inputSize = 640
 
 const MODEL_PATH = "/models/detection/yolov8n.onnx"
 
-const INPUT_SIZE = 640
-
-const CONFIDENCE_THRESHOLD = 0.35
-const NMS_THRESHOLD = 0.45
-
-
-
-// ================= LOAD MODEL =================
-
 export async function loadYOLO(){
 
-const cached = getCachedModel("yolo")
+if(session) return session
 
-if(cached){
+const ort = window.ort
 
-session = cached
-return session
+session = await ort.InferenceSession.create(MODEL_PATH,{
+executionProviders:["webgl"]
+})
 
-}
-
-emit("ai:model-loading","YOLO")
-
-session = await ort.InferenceSession.create(
-MODEL_PATH,
-{
-executionProviders:["webgl","wasm"]
-}
-)
-
-cacheModel("yolo",session)
-
-emit("ai:model-ready","YOLO")
+EventBus.emit("yoloLoaded")
 
 return session
 
@@ -46,27 +25,27 @@ return session
 
 
 
-// ================= DETECT OBJECTS =================
-
-export async function detectObjects(imageData){
+export async function detectObjects(canvas){
 
 if(!session){
-
 await loadYOLO()
-
 }
+
+const ctx = canvas.getContext("2d")
+
+const imageData = ctx.getImageData(0,0,canvas.width,canvas.height)
 
 const tensor = preprocess(imageData)
 
-const feeds = { images:tensor }
+const feeds = {
+images: tensor
+}
 
 const results = await session.run(feeds)
 
 const output = results.output0.data
 
-const detections = postprocess(output,imageData.width,imageData.height)
-
-emit("ai:detection",detections)
+const detections = decodeYOLO(output,canvas.width,canvas.height)
 
 return detections
 
@@ -74,159 +53,143 @@ return detections
 
 
 
-// ================= PREPROCESS =================
+function preprocess(imageData){
 
-function preprocess(image){
+const data = imageData.data
+const size = inputSize
 
-const canvas = document.createElement("canvas")
+const floatData = new Float32Array(3*size*size)
 
-canvas.width = INPUT_SIZE
-canvas.height = INPUT_SIZE
+let i = 0
 
-const ctx = canvas.getContext("2d")
+for(let y=0;y<size;y++){
+for(let x=0;x<size;x++){
 
-const temp = document.createElement("canvas")
+const px = (y*size + x)*4
 
-temp.width = image.width
-temp.height = image.height
+floatData[i] = data[px]/255
+floatData[i + size*size] = data[px+1]/255
+floatData[i + size*size*2] = data[px+2]/255
 
-temp.getContext("2d").putImageData(image,0,0)
-
-ctx.drawImage(temp,0,0,INPUT_SIZE,INPUT_SIZE)
-
-const imgData = ctx.getImageData(0,0,INPUT_SIZE,INPUT_SIZE)
-
-const data = imgData.data
-
-const floatData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
-
-for(let i=0;i<INPUT_SIZE*INPUT_SIZE;i++){
-
-floatData[i] = data[i*4] / 255
-floatData[i + INPUT_SIZE*INPUT_SIZE] = data[i*4+1] / 255
-floatData[i + 2*INPUT_SIZE*INPUT_SIZE] = data[i*4+2] / 255
+i++
 
 }
+}
 
-return new ort.Tensor(
-"float32",
-floatData,
-[1,3,INPUT_SIZE,INPUT_SIZE]
-)
+return new ort.Tensor("float32",floatData,[1,3,size,size])
 
 }
 
 
 
-// ================= POSTPROCESS =================
-
-function postprocess(output,width,height){
-
-const detections = []
-
-const rows = output.length / 85
-
-for(let i=0;i<rows;i++){
-
-const confidence = output[i*85+4]
-
-if(confidence < CONFIDENCE_THRESHOLD) continue
-
-let maxClass = 0
-let maxScore = 0
-
-for(let j=5;j<85;j++){
-
-const score = output[i*85+j]
-
-if(score > maxScore){
-
-maxScore = score
-maxClass = j-5
-
-}
-
-}
-
-const finalScore = confidence * maxScore
-
-if(finalScore < CONFIDENCE_THRESHOLD) continue
-
-const cx = output[i*85]
-const cy = output[i*85+1]
-const w = output[i*85+2]
-const h = output[i*85+3]
-
-const x = (cx - w/2) * width
-const y = (cy - h/2) * height
-
-detections.push({
-
-classId:maxClass,
-confidence:finalScore,
-
-box:{
-x,
-y,
-width:w*width,
-height:h*height
-}
-
-})
-
-}
-
-return nonMaxSuppression(detections)
-
-}
-
-
-
-// ================= NMS =================
-
-function nonMaxSuppression(detections){
-
-detections.sort((a,b)=>b.confidence-a.confidence)
+function decodeYOLO(output,imgW,imgH){
 
 const results = []
 
-while(detections.length){
+const numClasses = 80
+const stride = numClasses + 5
 
-const best = detections.shift()
+for(let i=0;i<output.length;i+=stride){
 
-results.push(best)
+const conf = output[i+4]
 
-detections = detections.filter(d=>{
+if(conf < 0.4) continue
 
-return iou(best.box,d.box) < NMS_THRESHOLD
+let bestClass = -1
+let bestScore = 0
+
+for(let c=0;c<numClasses;c++){
+
+const score = output[i+5+c]
+
+if(score > bestScore){
+bestScore = score
+bestClass = c
+}
+
+}
+
+const score = conf * bestScore
+
+if(score < 0.45) continue
+
+const cx = output[i]
+const cy = output[i+1]
+const w = output[i+2]
+const h = output[i+3]
+
+const x = cx - w/2
+const y = cy - h/2
+
+results.push({
+
+label: classNames[bestClass],
+confidence: score,
+box: [x*imgW,y*imgH,w*imgW,h*imgH]
 
 })
 
 }
 
-return results
+return nms(results)
 
 }
 
 
 
-// ================= IOU =================
+function nms(boxes){
+
+const selected = []
+
+boxes.sort((a,b)=>b.confidence - a.confidence)
+
+while(boxes.length){
+
+const chosen = boxes.shift()
+
+selected.push(chosen)
+
+boxes = boxes.filter(b=>iou(chosen.box,b.box) < 0.45)
+
+}
+
+return selected
+
+}
+
+
 
 function iou(a,b){
 
-const x1 = Math.max(a.x,b.x)
-const y1 = Math.max(a.y,b.y)
+const [x1,y1,w1,h1] = a
+const [x2,y2,w2,h2] = b
 
-const x2 = Math.min(a.x+a.width,b.x+b.width)
-const y2 = Math.min(a.y+a.height,b.y+b.height)
+const xa = Math.max(x1,x2)
+const ya = Math.max(y1,y2)
 
-const intersection = Math.max(0,x2-x1) * Math.max(0,y2-y1)
+const xb = Math.min(x1+w1,x2+w2)
+const yb = Math.min(y1+h1,y2+h2)
 
-const union =
-a.width*a.height +
-b.width*b.height -
-intersection
+const inter = Math.max(0,xb-xa) * Math.max(0,yb-ya)
 
-return intersection / union
+const union = w1*h1 + w2*h2 - inter
+
+return inter/union
 
 }
+
+
+
+const classNames = [
+"person","bicycle","car","motorcycle","airplane","bus","train","truck",
+"boat","traffic light","fire hydrant","stop sign","parking meter","bench",
+"bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe",
+"backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard",
+"sports ball","kite","baseball bat","baseball glove","skateboard","surfboard",
+"tennis racket","bottle","wine glass","cup","fork","knife","spoon","bowl",
+"banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza",
+"donut","cake","chair","couch","potted plant","bed","dining table","toilet",
+"tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven",
+"toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear",
+"hair drier","toothbrush"
+]
