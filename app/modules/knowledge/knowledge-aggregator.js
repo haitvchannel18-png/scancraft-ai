@@ -1,106 +1,87 @@
-// ================= IMPORTS =================
+// modules/knowledge/knowledge-aggregator.js
 
-import { getMaterialInfo } from "../data/materials.js"
+import { EventBus } from "../core/events.js"
+
 import { getHistoryInfo } from "../data/history.js"
+import { getMaterialInfo } from "../data/materials.js"
 import { getManufacturingInfo } from "../data/manufacturing.js"
 
-import { generateFutureConcepts } from "../ai/future-ai.js"
-
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
-
-
-
-// ================= STATE =================
-
-let knowledgeCache = new Map()
+import { searchWiki } from "./wiki.js"
+import { searchPrice } from "./price-search.js"
+import { predictFuture } from "./future-predict.js"
 
 
 
-// ================= MAIN FUNCTION =================
+export async function aggregateKnowledge(input){
 
-export async function aggregateKnowledge(reasoning){
+const {label, reasoning} = input
 
 try{
 
-const objectName = reasoning.guess || reasoning.object
+const [
 
-emit("knowledge:start", objectName)
+history,
+materials,
+manufacturing,
+wiki,
+price,
+future
 
+] = await Promise.all([
 
-// cache check
+safeHistory(label),
+safeMaterial(reasoning),
+safeManufacturing(label),
+safeWiki(label),
+safePrice(label),
+safeFuture(label)
 
-if(knowledgeCache.has(objectName)){
-
-emit("knowledge:cache-hit", objectName)
-
-return knowledgeCache.get(objectName)
-
-}
-
-
-
-// ================= DATA COLLECTION =================
-
-const materials = await getMaterialInfo(objectName)
-
-const history = await getHistoryInfo(objectName)
-
-const manufacturing = await getManufacturingInfo(objectName)
-
-const futureIdeas = await generateFutureConcepts({ name: objectName })
+])
 
 
-
-// ================= IMAGE SOURCES =================
-
-const images = buildImageSources(objectName)
-
-
-
-// ================= DESCRIPTION =================
-
-const description = buildDescription(reasoning)
-
-
-
-// ================= PACKAGE =================
 
 const knowledge = {
 
-name: objectName,
+object: label,
 
-description,
+category: reasoning.category,
 
-material: materials,
+material: reasoning.material,
+
+confidence: reasoning.confidence,
 
 history,
 
+materials,
+
 manufacturing,
 
-images,
+price,
 
-futureIdeas
+wiki,
+
+future,
+
+summary: generateSummary({
+label,
+history,
+materials,
+wiki
+})
 
 }
 
 
-
-// ================= CACHE =================
-
-knowledgeCache.set(objectName, knowledge)
-
-
-
-emit("knowledge:complete", knowledge)
+EventBus.emit("knowledgeReady",knowledge)
 
 return knowledge
 
+
 }catch(err){
 
-console.error("Knowledge aggregation failed", err)
+console.error("Knowledge aggregation error",err)
 
-emit("knowledge:error")
+EventBus.emit("knowledgeError",err)
 
 return null
 
@@ -110,68 +91,98 @@ return null
 
 
 
-// ================= DESCRIPTION BUILDER =================
+async function safeHistory(label){
 
-function buildDescription(reasoning){
-
-const name = reasoning.guess || reasoning.object
-
-const category = reasoning.category || "object"
-
-const purpose = reasoning.purpose || "general usage"
-
-return `${name} is a ${category} typically used for ${purpose}.`
+try{
+return await getHistoryInfo(label)
+}catch{
+return null
+}
 
 }
 
 
 
-// ================= IMAGE BUILDER =================
+async function safeMaterial(reasoning){
 
-function buildImageSources(objectName){
-
-const encoded = encodeURIComponent(objectName)
-
-return [
-
-`https://source.unsplash.com/600x400/?${encoded}`,
-
-`https://source.unsplash.com/600x400/?${encoded},technology`,
-
-`https://source.unsplash.com/600x400/?${encoded},product`
-
-]
+try{
+return await getMaterialInfo(reasoning.material)
+}catch{
+return null
+}
 
 }
 
 
 
-// ================= CACHE CONTROL =================
+async function safeManufacturing(label){
 
-export function clearKnowledgeCache(){
-
-knowledgeCache.clear()
-
-emit("knowledge:cache:cleared")
+try{
+return await getManufacturingInfo(label)
+}catch{
+return null
+}
 
 }
 
 
 
-// ================= SUMMARY =================
+async function safeWiki(label){
 
-export function summarizeKnowledge(knowledge){
-
-if(!knowledge) return null
-
-return {
-
-name: knowledge.name,
-
-materialCount: knowledge.material?.length || 0,
-
-futureConcepts: knowledge.futureIdeas?.length || 0
+try{
+return await searchWiki(label)
+}catch{
+return null
+}
 
 }
+
+
+
+async function safePrice(label){
+
+try{
+return await searchPrice(label)
+}catch{
+return null
+}
+
+}
+
+
+
+async function safeFuture(label){
+
+try{
+return await predictFuture(label)
+}catch{
+return null
+}
+
+}
+
+
+
+function generateSummary(data){
+
+const parts = []
+
+if(data.label){
+parts.push(`${data.label} is a commonly used object.`)
+}
+
+if(data.history){
+parts.push(`Historically it evolved as: ${data.history.short || ""}`)
+}
+
+if(data.materials){
+parts.push(`It is often made using ${data.materials.primary || "various materials"}.`)
+}
+
+if(data.wiki){
+parts.push(data.wiki.extract || "")
+}
+
+return parts.join(" ")
 
 }
