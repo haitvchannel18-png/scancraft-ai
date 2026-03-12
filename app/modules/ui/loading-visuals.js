@@ -1,197 +1,136 @@
-// ================= IMPORT =================
+// modules/ui/loading-visuals.js
 
-import { on } from "../core/events.js"
-import { floatElement } from "./animation-engine.js"
+import { EventBus } from "../core/events.js"
 
-
-
-// ================= DOM =================
-
-let loadingContainer
+let container
 let spinner
-let progressRing
-let skeletonCards = []
+let dots
+let progressBar
+let active = false
 
+export function initLoadingVisuals(containerId = "loading-visuals"){
 
+container = document.getElementById(containerId)
 
-// ================= INIT =================
+spinner = createSpinner()
+dots = createDots()
+progressBar = createProgressBar()
 
-export function initLoadingVisuals(){
+container.appendChild(spinner)
+container.appendChild(dots)
+container.appendChild(progressBar)
 
-loadingContainer = document.getElementById("ai-loading")
-spinner = document.getElementById("ai-spinner")
-progressRing = document.getElementById("ai-progress-ring")
+attachEvents()
 
-listenLoadingEvents()
-
-if(spinner){
-floatElement(spinner)
-}
-
-}
-
-
-
-// ================= EVENTS =================
-
-function listenLoadingEvents(){
-
-on("ai:processing:start", showLoading)
-
-on("ai:processing:stop", hideLoading)
-
-on("ai:progress:update", updateProgress)
+hide()
 
 }
 
+function createSpinner(){
 
+const el = document.createElement("div")
+el.className = "ai-spinner"
 
-// ================= SHOW LOADING =================
-
-function showLoading(){
-
-if(!loadingContainer) return
-
-loadingContainer.style.display = "flex"
-
-animateSpinner()
-
-renderSkeletonCards()
+return el
 
 }
 
+function createDots(){
 
+const el = document.createElement("div")
+el.className = "ai-dots"
 
-// ================= HIDE LOADING =================
+el.innerHTML = `
+<span></span>
+<span></span>
+<span></span>
+`
 
-function hideLoading(){
-
-if(!loadingContainer) return
-
-loadingContainer.style.display = "none"
-
-clearSkeleton()
-
-}
-
-
-
-// ================= SPINNER =================
-
-function animateSpinner(){
-
-if(!spinner) return
-
-spinner.animate(
-
-[
-{ transform:"rotate(0deg)" },
-{ transform:"rotate(360deg)" }
-
-],
-
-{
-duration:1200,
-iterations:Infinity,
-easing:"linear"
-}
-
-)
+return el
 
 }
 
+function createProgressBar(){
 
+const wrapper = document.createElement("div")
+wrapper.className = "ai-progress-wrapper"
 
-// ================= PROGRESS =================
+const bar = document.createElement("div")
+bar.className = "ai-progress"
 
-function updateProgress(value){
+wrapper.appendChild(bar)
 
-if(!progressRing) return
-
-const radius = progressRing.r.baseVal.value
-const circumference = radius * 2 * Math.PI
-
-progressRing.style.strokeDasharray = `${circumference}`
-
-const offset = circumference - value / 100 * circumference
-
-progressRing.style.strokeDashoffset = offset
+return wrapper
 
 }
 
+function attachEvents(){
 
+EventBus.on("aiThinking",show)
 
-// ================= SKELETON UI =================
+EventBus.on("aiResponse",hide)
 
-function renderSkeletonCards(){
+EventBus.on("scanStart",show)
 
-const container = document.getElementById("ai-skeleton")
+EventBus.on("scanComplete",hide)
+
+}
+
+export function show(){
 
 if(!container) return
 
-container.innerHTML = ""
+container.style.display = "flex"
 
-for(let i=0;i<3;i++){
+active = true
 
-const card = document.createElement("div")
-
-card.className = "skeleton-card"
-
-card.innerHTML = `
-
-<div class="skeleton-title"></div>
-<div class="skeleton-line"></div>
-<div class="skeleton-line short"></div>
-
-`
-
-container.appendChild(card)
-
-skeletonCards.push(card)
-
-animateSkeleton(card)
+animateProgress()
 
 }
 
-}
+export function hide(){
 
+if(!container) return
 
+container.style.display = "none"
 
-// ================= SKELETON ANIMATION =================
-
-function animateSkeleton(card){
-
-card.animate(
-
-[
-{ opacity:.4 },
-{ opacity:1 },
-{ opacity:.4 }
-],
-
-{
-duration:900,
-iterations:Infinity
-}
-
-)
+active = false
 
 }
 
+function animateProgress(){
 
+if(!active) return
 
-// ================= CLEAR =================
+const bar = progressBar.querySelector(".ai-progress")
 
-function clearSkeleton(){
+let width = 0
 
-const container = document.getElementById("ai-skeleton")
+const interval = setInterval(()=>{
 
-if(container){
+if(!active){
 
-container.innerHTML = ""
+clearInterval(interval)
+return
 
 }
 
-skeletonCards = []
+width += Math.random()*10
+
+if(width > 90) width = 90
+
+bar.style.width = width + "%"
+
+},300)
+
+}
+
+export function complete(){
+
+const bar = progressBar.querySelector(".ai-progress")
+
+bar.style.width = "100%"
+
+setTimeout(hide,300)
 
 }
