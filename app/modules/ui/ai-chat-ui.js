@@ -1,250 +1,147 @@
-// ================= IMPORT =================
+// modules/ui/ai-chat-ui.js
 
-import { emit, on } from "../core/events.js"
+import { EventBus } from "../core/events.js"
 import { speak } from "../voice/narration.js"
-import { playAIResponseSound, playThinkingSound } from "../audio/ai-sounds.js"
-
-
-// ================= DOM =================
+import { startConversation, stopConversation } from "../voice/conversation.js"
 
 let chatContainer
-let inputBox
-let sendButton
-let typingIndicator
+let messagesContainer
+let inputField
+let sendBtn
+let micBtn
 
+export function initAIChat(containerId="ai-chat"){
 
-// ================= INIT =================
+chatContainer = document.getElementById(containerId)
 
-export function initAIChatUI(){
+messagesContainer = document.createElement("div")
+messagesContainer.className = "ai-chat-messages"
 
-chatContainer = document.getElementById("ai-chat-container")
-inputBox = document.getElementById("ai-input")
-sendButton = document.getElementById("ai-send")
-typingIndicator = document.getElementById("ai-typing")
+const inputArea = document.createElement("div")
+inputArea.className = "ai-chat-input"
 
-sendButton.addEventListener("click", sendMessage)
-inputBox.addEventListener("keypress", e => {
+inputField = document.createElement("input")
+inputField.placeholder = "Ask anything about this object..."
 
+sendBtn = document.createElement("button")
+sendBtn.innerText = "Send"
+
+micBtn = document.createElement("button")
+micBtn.innerText = "🎤"
+
+inputArea.appendChild(inputField)
+inputArea.appendChild(sendBtn)
+inputArea.appendChild(micBtn)
+
+chatContainer.appendChild(messagesContainer)
+chatContainer.appendChild(inputArea)
+
+attachEvents()
+
+}
+
+function attachEvents(){
+
+sendBtn.onclick = sendMessage
+
+inputField.addEventListener("keypress",e=>{
 if(e.key === "Enter"){
-
 sendMessage()
-
 }
-
 })
 
-listenPipelineResponses()
+micBtn.onclick = toggleVoice
+
+EventBus.on("voiceResult",handleVoiceResult)
+
+EventBus.on("aiResponse",addAIMessage)
 
 }
 
+function sendMessage(){
 
+const text = inputField.value.trim()
 
-// ================= SEND MESSAGE =================
+if(!text) return
 
-async function sendMessage(){
+addUserMessage(text)
 
-const message = inputBox.value.trim()
+EventBus.emit("userQuery",text)
 
-if(!message) return
-
-renderUserMessage(message)
-
-inputBox.value = ""
-
-emit("ai:user-question", message)
-
-showTyping()
-
-playThinkingSound()
+inputField.value = ""
 
 }
 
+function toggleVoice(){
 
-
-// ================= LISTEN AI RESPONSES =================
-
-function listenPipelineResponses(){
-
-on("ai:response", data => {
-
-hideTyping()
-
-renderAIMessage(data.text)
-
-playAIResponseSound()
-
-speak(data.text)
-
-})
+EventBus.emit("voiceToggle")
 
 }
 
+function handleVoiceResult(text){
 
+if(!text) return
 
-// ================= RENDER USER MESSAGE =================
+addUserMessage(text)
 
-function renderUserMessage(text){
-
-const bubble = document.createElement("div")
-
-bubble.className = "chat-bubble user"
-
-bubble.innerHTML = `
-
-<div class="bubble-content">
-${escapeHTML(text)}
-</div>
-
-`
-
-chatContainer.appendChild(bubble)
-
-scrollChat()
+EventBus.emit("userQuery",text)
 
 }
 
+function addUserMessage(text){
 
+const msg = createMessage(text,"user")
 
-// ================= RENDER AI MESSAGE =================
+messagesContainer.appendChild(msg)
 
-function renderAIMessage(text){
-
-const bubble = document.createElement("div")
-
-bubble.className = "chat-bubble ai"
-
-bubble.innerHTML = `
-
-<div class="bubble-avatar">🤖</div>
-
-<div class="bubble-content">
-${renderFormattedText(text)}
-</div>
-
-`
-
-chatContainer.appendChild(bubble)
-
-animateBubble(bubble)
-
-scrollChat()
+scrollToBottom()
 
 }
 
+export function addAIMessage(text){
 
+const msg = createMessage(text,"ai")
 
-// ================= FORMATTING =================
+messagesContainer.appendChild(msg)
 
-function renderFormattedText(text){
+speak(text)
 
-return text
-.replace(/\*\*(.*?)\*\*/g,"<b>$1</b>")
-.replace(/\n/g,"<br>")
-
-}
-
-
-
-// ================= TYPING =================
-
-function showTyping(){
-
-typingIndicator.style.display = "flex"
+scrollToBottom()
 
 }
 
-function hideTyping(){
+function createMessage(text,type){
 
-typingIndicator.style.display = "none"
+const msg = document.createElement("div")
 
-}
+msg.className = `chat-message ${type}`
 
+msg.innerText = text
 
-
-// ================= ANIMATION =================
-
-function animateBubble(bubble){
-
-bubble.style.opacity = "0"
-
-bubble.style.transform = "translateY(10px)"
-
-requestAnimationFrame(()=>{
-
-bubble.style.transition = "all 0.4s ease"
-
-bubble.style.opacity = "1"
-
-bubble.style.transform = "translateY(0)"
-
-})
+return msg
 
 }
 
+function scrollToBottom(){
 
-
-// ================= SCROLL =================
-
-function scrollChat(){
-
-chatContainer.scrollTop = chatContainer.scrollHeight
+messagesContainer.scrollTop = messagesContainer.scrollHeight
 
 }
 
+export function clearChat(){
 
-
-// ================= SECURITY =================
-
-function escapeHTML(text){
-
-const div = document.createElement("div")
-
-div.innerText = text
-
-return div.innerHTML
+messagesContainer.innerHTML = ""
 
 }
 
+export function openChat(){
 
-
-// ================= OBJECT EXPLAIN =================
-
-export function showObjectExplanation(objectData){
-
-renderAIMessage(`
-
-**Object detected:** ${objectData.name}
-
-${objectData.description}
-
-`)
+chatContainer.style.display = "flex"
 
 }
 
+export function closeChat(){
 
-
-// ================= IMAGE CARDS =================
-
-export function renderImageGallery(images){
-
-const gallery = document.createElement("div")
-
-gallery.className = "chat-gallery"
-
-images.forEach(img => {
-
-const image = document.createElement("img")
-
-image.src = img
-
-image.className = "gallery-image"
-
-gallery.appendChild(image)
-
-})
-
-chatContainer.appendChild(gallery)
-
-scrollChat()
+chatContainer.style.display = "none"
 
 }
