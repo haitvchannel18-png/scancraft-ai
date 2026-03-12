@@ -1,194 +1,150 @@
-// ================= IMPORT =================
+// modules/ui/voice-bubble.js
 
-import { on, emit } from "../core/events.js"
-import { playAISpeakingSound } from "../audio/ai-sounds.js"
-import { bubblePop } from "./animation-engine.js"
-
-
-// ================= DOM =================
+import { EventBus } from "../core/events.js"
 
 let bubble
-let waveformCanvas
+let canvas
 let ctx
 let animationId
-let listening = false
-let speaking = false
+let bars = []
+let active = false
 
+const BAR_COUNT = 24
+const MAX_HEIGHT = 40
 
-// ================= INIT =================
+export function initVoiceBubble(containerId = "voice-bubble-container"){
 
-export function initVoiceBubble(){
+const container = document.getElementById(containerId)
 
-bubble = document.getElementById("voice-bubble")
-waveformCanvas = document.getElementById("voice-waveform")
+bubble = document.createElement("div")
+bubble.className = "voice-bubble"
 
-if(!bubble || !waveformCanvas) return
+canvas = document.createElement("canvas")
+canvas.width = 220
+canvas.height = 80
 
-ctx = waveformCanvas.getContext("2d")
+ctx = canvas.getContext("2d")
 
-resizeCanvas()
+bubble.appendChild(canvas)
+container.appendChild(bubble)
 
-window.addEventListener("resize", resizeCanvas)
+createBars()
 
-listenVoiceEvents()
-
-}
-
-
-
-// ================= RESIZE =================
-
-function resizeCanvas(){
-
-waveformCanvas.width = waveformCanvas.offsetWidth
-waveformCanvas.height = waveformCanvas.offsetHeight
+attachEvents()
 
 }
 
+function createBars(){
 
+bars = []
 
-// ================= EVENT LISTENER =================
+for(let i=0;i<BAR_COUNT;i++){
 
-function listenVoiceEvents(){
-
-on("voice:listening:start", startListeningAnimation)
-
-on("voice:listening:stop", stopListeningAnimation)
-
-on("voice:speaking:start", startSpeakingAnimation)
-
-on("voice:speaking:stop", stopSpeakingAnimation)
+bars.push({
+height: Math.random()*10,
+speed: 0.2 + Math.random()*0.8
+})
 
 }
 
+}
 
+function attachEvents(){
 
-// ================= LISTENING =================
+EventBus.on("voiceStart",startAnimation)
 
-function startListeningAnimation(){
+EventBus.on("voiceEnd",stopAnimation)
 
-listening = true
-speaking = false
-
-bubble.classList.add("voice-active")
-
-bubblePop(bubble)
-
-animateWave()
+EventBus.on("voiceStopped",stopAnimation)
 
 }
 
+function startAnimation(){
 
+active = true
 
-function stopListeningAnimation(){
+bubble.classList.add("active")
 
-listening = false
-bubble.classList.remove("voice-active")
+animate()
+
+}
+
+function stopAnimation(){
+
+active = false
+
+bubble.classList.remove("active")
 
 cancelAnimationFrame(animationId)
 
-clearWave()
+drawIdle()
 
 }
 
+function animate(){
 
+animationId = requestAnimationFrame(animate)
 
-// ================= SPEAKING =================
+ctx.clearRect(0,0,canvas.width,canvas.height)
 
-function startSpeakingAnimation(){
+const centerY = canvas.height/2
+const barWidth = canvas.width / BAR_COUNT
 
-speaking = true
-listening = false
+bars.forEach((bar,i)=>{
 
-bubble.classList.add("voice-speaking")
+bar.height += (Math.random()-0.5)*bar.speed*10
 
-playAISpeakingSound()
-
-animateWave()
-
-}
-
-
-
-function stopSpeakingAnimation(){
-
-speaking = false
-
-bubble.classList.remove("voice-speaking")
-
-cancelAnimationFrame(animationId)
-
-clearWave()
-
-}
-
-
-
-// ================= WAVE ANIMATION =================
-
-function animateWave(){
-
-animationId = requestAnimationFrame(animateWave)
-
-ctx.clearRect(0,0,waveformCanvas.width,waveformCanvas.height)
-
-const bars = 32
-const barWidth = waveformCanvas.width / bars
-
-for(let i=0;i<bars;i++){
-
-let amplitude
-
-if(listening){
-
-amplitude = Math.random()*40 + 10
-
-}else if(speaking){
-
-amplitude = Math.random()*60 + 20
-
-}else{
-
-amplitude = 2
-
-}
+bar.height = Math.max(4,Math.min(MAX_HEIGHT,bar.height))
 
 const x = i * barWidth
-const y = waveformCanvas.height / 2
 
-ctx.fillStyle = "#00f7ff"
-
-ctx.fillRect(
-x,
-y - amplitude/2,
-barWidth*0.6,
-amplitude
-)
-
-}
-
-}
-
-
-
-// ================= CLEAR =================
-
-function clearWave(){
-
-ctx.clearRect(0,0,waveformCanvas.width,waveformCanvas.height)
-
-}
-
-
-
-// ================= CLICK VOICE =================
-
-export function enableVoiceTap(){
-
-bubble.addEventListener("click",()=>{
-
-emit("voice:toggle")
+drawBar(x,centerY,barWidth-2,bar.height)
 
 })
+
+}
+
+function drawBar(x,centerY,width,height){
+
+ctx.beginPath()
+
+ctx.fillStyle = "rgba(0,180,255,0.9)"
+
+ctx.roundRect(
+x,
+centerY - height/2,
+width,
+height,
+4
+)
+
+ctx.fill()
+
+}
+
+function drawIdle(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+const centerY = canvas.height/2
+const barWidth = canvas.width / BAR_COUNT
+
+for(let i=0;i<BAR_COUNT;i++){
+
+drawBar(i*barWidth,centerY,barWidth-2,6)
+
+}
+
+}
+
+export function destroyVoiceBubble(){
+
+cancelAnimationFrame(animationId)
+
+if(bubble && bubble.parentNode){
+
+bubble.parentNode.removeChild(bubble)
+
+}
 
 }
