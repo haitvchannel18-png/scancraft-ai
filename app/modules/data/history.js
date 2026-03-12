@@ -1,197 +1,134 @@
-// ================= IMPORT =================
+// modules/data/history.js
 
-import { emit } from "../core/events.js"
+import { EventBus } from "../core/events.js"
 
+const LOCAL_HISTORY_DB = {
 
-
-// ================= HISTORY DATABASE =================
-
-const historyDB = {
-
-headphones:{
+bottle:{
+origin:"Ancient civilizations used clay and glass vessels.",
 timeline:[
-{year:1881,event:"First telephone headsets used by switchboard operators"},
-{year:1910,event:"Commercial audio headphones introduced"},
-{year:1958,event:"Stereo headphones invented"},
-{year:2000,event:"Wireless Bluetooth headphones introduced"},
-{year:2020,event:"AI noise cancellation technology developed"}
+"3000 BC – early clay containers",
+"1600s – glass bottles used widely in Europe",
+"1900s – industrial bottle manufacturing",
+"1970s – plastic PET bottles introduced"
 ],
-inventors:[
-"Ezra Gilliland",
-"John C. Koss"
-],
-origin:"United States",
-category:"electronics"
-},
-
-laptop:{
-timeline:[
-{year:1975,event:"Portable computer concept developed"},
-{year:1981,event:"First commercially available laptop released"},
-{year:1990,event:"Lightweight laptops introduced"},
-{year:2005,event:"Modern thin laptops developed"},
-{year:2020,event:"AI optimized laptops released"}
-],
-inventors:[
-"Adam Osborne",
-"Bill Moggridge"
-],
-origin:"United States",
-category:"electronics"
+summary:"Bottles evolved from clay containers to modern plastic and glass storage vessels."
 },
 
 chair:{
+origin:"Ancient Egypt used ceremonial chairs for royalty.",
 timeline:[
-{year:3000,event:"Ancient Egyptian chairs created"},
-{year:1500,event:"Decorative wooden chairs used in Europe"},
-{year:1800,event:"Mass produced furniture begins"},
-{year:1950,event:"Modern ergonomic chairs designed"},
-{year:2000,event:"Smart ergonomic office chairs"}
+"2000 BC – Egyptian ceremonial chairs",
+"Middle Ages – wooden furniture becomes common",
+"1800s – mass production furniture",
+"Modern era – ergonomic and design chairs"
 ],
-inventors:[
-"Various historical designers"
+summary:"Chairs evolved from royal seating to everyday ergonomic furniture."
+},
+
+car:{
+origin:"First automobiles appeared in the late 19th century.",
+timeline:[
+"1886 – Karl Benz patents first automobile",
+"1908 – Ford Model T mass production",
+"1950s – global automotive expansion",
+"Modern era – electric and autonomous vehicles"
 ],
-origin:"Ancient Egypt",
-category:"furniture"
+summary:"Cars evolved from early combustion engines to modern electric mobility."
 }
 
 }
 
 
 
-// ================= GET HISTORY =================
+export async function getHistoryInfo(label){
 
-export function getObjectHistory(name){
+if(!label) return null
 
-emit("history:fetch",name)
+const key = label.toLowerCase()
 
-return historyDB[name] || null
+// 1️⃣ Local database
+if(LOCAL_HISTORY_DB[key]){
+
+EventBus.emit("historyLocalFound",key)
+
+return LOCAL_HISTORY_DB[key]
+
+}
+
+// 2️⃣ Wikipedia API fallback
+const wikiData = await fetchWikipedia(label)
+
+if(wikiData){
+
+EventBus.emit("historyWikiFound",label)
+
+return wikiData
+
+}
+
+// 3️⃣ AI inferred history
+return inferHistory(label)
 
 }
 
 
 
-// ================= TIMELINE =================
+async function fetchWikipedia(label){
 
-export function getTimeline(name){
+try{
 
-const history = historyDB[name]
+const url =
+`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(label)}`
 
-if(!history){
+const res = await fetch(url)
 
-return []
+if(!res.ok) return null
 
-}
-
-return history.timeline
-
-}
-
-
-
-// ================= INVENTORS =================
-
-export function getInventors(name){
-
-const history = historyDB[name]
-
-if(!history){
-
-return []
-
-}
-
-return history.inventors
-
-}
-
-
-
-// ================= ORIGIN =================
-
-export function getOrigin(name){
-
-const history = historyDB[name]
-
-if(!history){
-
-return "Unknown origin"
-
-}
-
-return history.origin
-
-}
-
-
-
-// ================= HISTORY ANALYSIS =================
-
-export function analyzeHistory(object){
-
-emit("history:analyze:start")
-
-const name = object.name?.toLowerCase()
-
-const history = historyDB[name]
-
-if(!history){
+const data = await res.json()
 
 return {
 
+origin:data.title || label,
+
 timeline:[],
-origin:"Unknown",
-inventors:[]
+
+summary:data.extract || null,
+
+source:"wikipedia"
+
+}
+
+}catch{
+
+return null
 
 }
 
 }
 
-emit("history:analyze:complete",history)
-
-return history
-
-}
 
 
+function inferHistory(label){
 
-// ================= HISTORY SUMMARY =================
+const guess = {
 
-export function historySummary(name){
+origin:`The object "${label}" likely developed as human technology evolved.`,
 
-const history = historyDB[name]
+timeline:[
+"Early concept and primitive versions",
+"Industrial manufacturing phase",
+"Modern optimized design"
+],
 
-if(!history){
+summary:`${label} is a man-made object that evolved over time through engineering improvements.`,
 
-return "Historical information for this object is limited."
-
-}
-
-const firstEvent = history.timeline[0]
-
-return `The ${name} originated around ${firstEvent.year}. 
-Over time it evolved through technological improvements and design innovations.`
+source:"ai-inferred"
 
 }
 
+EventBus.emit("historyInferred",label)
 
-
-// ================= FUTURE TREND =================
-
-export function predictFutureTrend(category){
-
-if(category === "electronics"){
-
-return "Future versions will integrate AI chips and smart connectivity."
-
-}
-
-if(category === "furniture"){
-
-return "Future designs will focus on ergonomic and sustainable materials."
-
-}
-
-return "Future developments may improve efficiency and automation."
+return guess
 
 }
