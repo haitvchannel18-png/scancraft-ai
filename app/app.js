@@ -1,181 +1,146 @@
-// ================= IMPORT MODULES =================
-
-import { initPipeline } from "./modules/core/pipeline.js"
-import { initEvents } from "./modules/core/events.js"
-import { initAudio } from "./modules/audio/audio-engine.js"
-
+import { initPipeline, processFrame } from "./modules/core/pipeline.js"
 import { startCamera } from "./modules/camera/camera.js"
+import { EventBus } from "./modules/core/events.js"
 
-import { askAI } from "./modules/ai/object-chat.js"
+import { AudioEngine } from "./modules/audio/audio-engine.js"
+import { speak } from "./modules/voice/narration.js"
 
-import { startVoice } from "./modules/voice/conversation.js"
-
-
-// ================= DOM REFERENCES =================
-
-const loadingScreen = document.getElementById("loading-screen")
-
-const cameraVideo = document.getElementById("camera")
-
-const scanBtn = document.getElementById("scanBtn")
-
-const aiChat = document.getElementById("ai-chat")
-
-const aiInput = document.getElementById("aiQuestion")
-
-const askBtn = document.getElementById("askBtn")
-
-const voiceBtn = document.getElementById("voiceToggle")
-
-const voiceUI = document.getElementById("voice-ui")
-
-const resultPanel = document.getElementById("result-panel")
+import { showDetection } from "./modules/ui/scan-overlay.js"
+import { renderObjectPanel } from "./modules/ui/object-panel.js"
+import { pushAIMessage } from "./modules/ui/ai-chat-ui.js"
 
 
-// ================= TAB SYSTEM =================
+const video = document.getElementById("camera-stream")
+const canvas = document.getElementById("scan-canvas")
 
-const tabButtons = document.querySelectorAll("#result-tabs button")
-
-const tabs = document.querySelectorAll(".result-tab")
-
-tabButtons.forEach(btn => {
-
-btn.addEventListener("click", () => {
-
-const target = btn.dataset.tab
-
-tabs.forEach(tab => tab.classList.add("hidden"))
-
-document.getElementById(target + "-panel").classList.remove("hidden")
-
-})
-
-})
+const scanBtn = document.getElementById("scan-button")
+const chatInput = document.getElementById("chat-input")
+const sendBtn = document.getElementById("send-btn")
+const voiceBtn = document.getElementById("voice-btn")
 
 
-// ================= APP BOOT =================
+let running = false
+
 
 async function bootApp(){
 
-console.log("Booting ScanCraft AI")
+console.log("Initializing ScanCraft AI")
 
-initEvents()
-
-await initAudio()
+await AudioEngine.init()
 
 await initPipeline()
 
-await startCamera(cameraVideo)
+await startCamera(video)
 
-loadingScreen.style.display = "none"
-
-console.log("ScanCraft AI Ready")
+startFrameLoop()
 
 }
 
-bootApp()
+
+function startFrameLoop(){
+
+const ctx = canvas.getContext("2d")
+
+async function loop(){
+
+if(!running){
+
+requestAnimationFrame(loop)
+return
+
+}
+
+ctx.drawImage(video,0,0,canvas.width,canvas.height)
+
+const result = await processFrame(canvas)
+
+if(result){
+
+showDetection(result)
+
+EventBus.emit("objectDetected",result)
+
+}
+
+requestAnimationFrame(loop)
+
+}
+
+requestAnimationFrame(loop)
+
+}
 
 
-// ================= SCAN BUTTON =================
 
-scanBtn.addEventListener("click", () => {
+scanBtn.addEventListener("click",()=>{
 
-console.log("Scan triggered")
+running = !running
 
-// future detection trigger
+if(running){
+
+AudioEngine.play("scan-start")
+
+scanBtn.innerText="STOP"
+
+}else{
+
+scanBtn.innerText="SCAN"
+
+}
 
 })
 
 
-// ================= AI CHAT =================
 
-askBtn.addEventListener("click", async () => {
+EventBus.on("objectDetected",async data=>{
 
-const question = aiInput.value
+AudioEngine.play("detect")
 
-if(!question) return
+renderObjectPanel(data)
 
-addUserMessage(question)
+const text = `Detected ${data.label}`
 
-aiInput.value = ""
+pushAIMessage("ai",text)
 
-const reply = await askAI(question)
-
-addAIMessage(reply)
+await speak(text)
 
 })
 
 
-// ================= CHAT MESSAGE HELPERS =================
 
-function addUserMessage(text){
+sendBtn.addEventListener("click",handleChat)
 
-const div = document.createElement("div")
+chatInput.addEventListener("keypress",e=>{
 
-div.className = "user-message"
-
-div.innerText = text
-
-aiChat.appendChild(div)
-
-aiChat.scrollTop = aiChat.scrollHeight
-
-}
-
-
-function addAIMessage(text){
-
-const div = document.createElement("div")
-
-div.className = "ai-message"
-
-div.innerText = text
-
-aiChat.appendChild(div)
-
-aiChat.scrollTop = aiChat.scrollHeight
-
-}
-
-
-// ================= VOICE SYSTEM =================
-
-voiceBtn.addEventListener("click", async () => {
-
-voiceUI.classList.remove("hidden")
-
-const text = await startVoice()
-
-voiceUI.classList.add("hidden")
-
-addUserMessage(text)
-
-const reply = await askAI(text)
-
-addAIMessage(reply)
+if(e.key==="Enter") handleChat()
 
 })
 
 
-// ================= OBJECT RESULT DISPLAY =================
+async function handleChat(){
 
-export function showObjectResult(data){
+const text = chatInput.value
 
-resultPanel.classList.remove("hidden")
+if(!text) return
 
-document.getElementById("objectName").innerText = data.name
+pushAIMessage("user",text)
 
-document.getElementById("objectConfidence").innerText = "Confidence: " + data.confidence
+chatInput.value=""
 
-document.getElementById("objectPreview").src = data.image
+AudioEngine.play("typing")
 
-}
-
-
-// ================= FUTURE HOOKS =================
-
-window.ScanCraft = {
-
-showObjectResult,
+EventBus.emit("userQuery",text)
 
 }
+
+
+
+voiceBtn.addEventListener("click",()=>{
+
+EventBus.emit("voiceInput")
+
+})
+
+
+
+window.addEventListener("load",bootApp)
