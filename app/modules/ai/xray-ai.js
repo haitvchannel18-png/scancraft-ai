@@ -1,74 +1,77 @@
-// ================= IMPORTS =================
+// modules/ai/xray-ai.js
 
-import { emit } from "../core/events.js"
-import { CONFIG } from "../utils/config.js"
+import { EventBus } from "../core/events.js"
 
-import { getMaterialInfo } from "../data/materials.js"
-import { getManufacturingInfo } from "../data/manufacturing.js"
+import { getMaterialInfo } from "../knowledge/material-db.js"
+import { searchProductDB } from "../knowledge/product-db.js"
 
-
-
-// ================= STATE =================
+import { logAI } from "../utils/ai-logger.js"
 
 let currentObject = null
 
+export function initXrayAI(){
 
+EventBus.on("objectBrainComplete",setObjectContext)
 
-// ================= INITIALIZE =================
-
-export function setXrayObject(objectData){
-
-currentObject = objectData
-
-emit("xray:object:set", objectData)
+EventBus.emit("xrayAIReady")
 
 }
 
 
 
-// ================= MAIN ANALYSIS =================
+function setObjectContext(payload){
 
-export async function analyzeXray(){
-
-if(!currentObject){
-
-emit("xray:error","No object selected")
-
-return null
+currentObject = payload
 
 }
 
-emit("xray:analysis:start")
+
+
+export async function analyzeInternalStructure(objectName){
 
 try{
 
-const structure = await buildStructure(currentObject)
+if(!objectName && currentObject){
+objectName = currentObject.object
+}
 
-const materials = await getMaterialInfo(currentObject.name)
+if(!objectName){
+return null
+}
 
-const manufacturing = await getManufacturingInfo(currentObject.name)
+const materials = await getMaterialInfo(objectName)
+
+const product = await searchProductDB(objectName)
+
+const components = inferComponents(objectName,materials,product)
+
+const layers = buildMaterialLayers(materials)
 
 const result = {
 
-object: currentObject.name,
-
-structure,
+object: objectName,
 
 materials,
 
-manufacturing
+components,
+
+layers,
+
+analysis: generateAnalysis(objectName,materials,components)
 
 }
 
-emit("xray:analysis:complete", result)
+EventBus.emit("xrayAnalysisComplete",result)
+
+logAI("XRayAnalysis",result)
 
 return result
 
 }catch(err){
 
-console.error("Xray analysis error", err)
+console.error("XRay AI error",err)
 
-emit("xray:error")
+EventBus.emit("xrayAnalysisError",err)
 
 return null
 
@@ -78,105 +81,88 @@ return null
 
 
 
-// ================= STRUCTURE BUILDER =================
-
-async function buildStructure(object){
+function inferComponents(objectName,materials,product){
 
 const components = []
 
-const name = object.name.toLowerCase()
+if(product && product.components){
 
-
-
-// Basic structural reasoning
-
-if(name.includes("phone")){
-
-components.push("display panel")
-components.push("battery module")
-components.push("logic board")
-components.push("camera system")
-components.push("speaker assembly")
+product.components.forEach(c=>components.push(c))
 
 }
 
-else if(name.includes("headphone")){
+if(objectName.toLowerCase().includes("phone")){
 
-components.push("audio driver")
-components.push("ear cushion")
-components.push("headband frame")
-components.push("cable / wireless module")
+components.push("display")
+components.push("battery")
+components.push("motherboard")
+components.push("camera module")
 
 }
 
-else if(name.includes("bottle")){
+if(objectName.toLowerCase().includes("bottle")){
 
 components.push("container body")
-components.push("cap mechanism")
-components.push("seal ring")
+components.push("cap")
+components.push("liquid content")
 
 }
 
-else{
+if(objectName.toLowerCase().includes("chair")){
 
-components.push("external shell")
-components.push("internal framework")
-components.push("functional components")
-
-}
-
-return components
+components.push("seat")
+components.push("legs")
+components.push("support frame")
 
 }
 
-
-
-// ================= MATERIAL ANALYSIS =================
-
-export function estimateMaterialLayers(object){
-
-const layers = []
-
-layers.push("outer shell")
-layers.push("support frame")
-layers.push("internal components")
-
-return layers
+return [...new Set(components)]
 
 }
 
 
 
-// ================= FUTURE STRUCTURE =================
+function buildMaterialLayers(materials){
 
-export function predictFutureStructure(object){
+if(!materials) return []
 
-const future = []
-
-future.push("lighter materials")
-
-future.push("AI optimized components")
-
-future.push("smart sensor integration")
-
-return future
-
-}
-
-
-
-// ================= SUMMARY =================
-
-export function generateXraySummary(xrayData){
+return materials.map((mat,index)=>{
 
 return {
+layer:index+1,
+material:mat
+}
 
-object: xrayData.object,
-
-components: xrayData.structure.length,
-
-materialTypes: xrayData.materials?.length || 0
+})
 
 }
+
+
+
+function generateAnalysis(objectName,materials,components){
+
+let text = `${objectName} internal structure analysis:\n`
+
+if(materials && materials.length){
+
+text += `Materials used: ${materials.join(", ")}.\n`
+
+}
+
+if(components && components.length){
+
+text += `Main components include: ${components.join(", ")}.`
+
+}
+
+return text
+
+}
+
+
+
+export function getCurrentObject(){
+
+return currentObject
 
 }
