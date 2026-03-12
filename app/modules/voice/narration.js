@@ -1,207 +1,168 @@
-// ================= IMPORTS =================
+// modules/voice/narration.js
 
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+import { EventBus } from "../core/events.js"
+import { playAISound } from "../audio/ai-sounds.js"
 
+let speaking = false
+let speechQueue = []
+let currentUtterance = null
 
-// ================= STATE =================
+const synth = window.speechSynthesis
 
-let speechEnabled = true
-let currentVoice = null
+export function speak(text, options = {}) {
 
-let recognition = null
-let listening = false
+if (!text) return
 
+speechQueue.push({ text, options })
 
-// ================= INIT =================
-
-export function initVoiceSystem(){
-
-logAI("Voice system initializing")
-
-loadVoices()
-
-initSpeechRecognition()
-
-emit("voice:ready")
+processQueue()
 
 }
 
+function processQueue() {
 
-// ================= LOAD VOICES =================
+if (speaking) return
+if (speechQueue.length === 0) return
 
-function loadVoices(){
+const { text, options } = speechQueue.shift()
 
-const voices = speechSynthesis.getVoices()
+currentUtterance = new SpeechSynthesisUtterance(text)
 
-if(!voices.length){
+configureVoice(currentUtterance, options)
 
-speechSynthesis.onvoiceschanged = ()=>{
+attachEvents(currentUtterance)
 
-setPreferredVoice()
+synth.speak(currentUtterance)
 
-}
+speaking = true
 
-}else{
+EventBus.emit("aiSpeaking", text)
 
-setPreferredVoice()
-
-}
-
-}
-
-
-function setPreferredVoice(){
-
-const voices = speechSynthesis.getVoices()
-
-currentVoice = voices.find(v =>
-v.lang.includes("en")
-) || voices[0]
+playAISound("response")
 
 }
 
+function configureVoice(utterance, options) {
 
-// ================= SPEAK =================
+const voices = synth.getVoices()
 
-export function narrate(text){
+const preferredLang = options.lang || detectLanguage(options.text)
 
-if(!speechEnabled) return
+const selectedVoice =
+voices.find(v => v.lang.startsWith(preferredLang)) ||
+voices.find(v => v.lang.startsWith("en")) ||
+voices[0]
 
-const utterance = new SpeechSynthesisUtterance(text)
+utterance.voice = selectedVoice
 
-utterance.voice = currentVoice
-utterance.rate = 1
-utterance.pitch = 1
-
-emit("voice:speaking", text)
-
-speechSynthesis.speak(utterance)
-
-}
-
-
-// ================= STOP =================
-
-export function stopNarration(){
-
-speechSynthesis.cancel()
-
-emit("voice:stopped")
+utterance.rate = options.rate || 1
+utterance.pitch = options.pitch || 1
+utterance.volume = options.volume || 1
 
 }
 
+function attachEvents(utterance) {
 
-// ================= ENABLE / DISABLE =================
+utterance.onstart = () => {
 
-export function enableVoice(){
-
-speechEnabled = true
-
-}
-
-export function disableVoice(){
-
-speechEnabled = false
+EventBus.emit("voiceStart")
 
 }
 
+utterance.onend = () => {
 
-// ================= SPEECH RECOGNITION =================
+speaking = false
 
-function initSpeechRecognition(){
+EventBus.emit("voiceEnd")
 
-const SpeechRecognition =
-window.SpeechRecognition ||
-window.webkitSpeechRecognition
-
-if(!SpeechRecognition){
-
-logAI("Speech recognition not supported")
-
-return
+processQueue()
 
 }
 
-recognition = new SpeechRecognition()
+utterance.onerror = () => {
 
-recognition.continuous = true
-recognition.interimResults = true
-recognition.lang = "en-US"
+speaking = false
 
-recognition.onstart = ()=>{
-
-listening = true
-
-emit("voice:listening")
-
-}
-
-recognition.onend = ()=>{
-
-listening = false
-
-emit("voice:stopped-listening")
-
-}
-
-recognition.onresult = (event)=>{
-
-let transcript = ""
-
-for(let i = event.resultIndex; i < event.results.length; i++){
-
-transcript += event.results[i][0].transcript
-
-}
-
-emit("voice:transcript", transcript)
+processQueue()
 
 }
 
 }
 
+export function stopNarration() {
 
-// ================= START LISTENING =================
+speechQueue = []
 
-export function startListening(){
+if (synth.speaking) {
 
-if(!recognition) return
-
-recognition.start()
-
-}
-
-
-// ================= STOP LISTENING =================
-
-export function stopListening(){
-
-if(!recognition) return
-
-recognition.stop()
+synth.cancel()
 
 }
 
+speaking = false
 
-// ================= VOICE QUESTION =================
+EventBus.emit("voiceStopped")
 
-export function handleVoiceQuestion(callback){
+}
 
-emit("voice:waiting-question")
+export function isSpeaking() {
 
-startListening()
+return speaking
 
-document.addEventListener("voice:transcript", async (e)=>{
+}
 
-const question = e.detail
+function detectLanguage(text) {
 
-emit("voice:question", question)
+if (!text) return "en"
 
-const answer = await callback(question)
+const hindiPattern = /[\u0900-\u097F]/
 
-narrate(answer)
+if (hindiPattern.test(text)) return "hi"
 
-})
+return "en"
+
+}
+
+export function interruptSpeak(text, options = {}) {
+
+stopNarration()
+
+speak(text, options)
+
+}
+
+export function queueLength() {
+
+return speechQueue.length
+
+}
+
+export function clearQueue() {
+
+speechQueue = []
+
+}
+
+export function pauseNarration() {
+
+if (synth.speaking) {
+
+synth.pause()
+
+EventBus.emit("voicePaused")
+
+}
+
+}
+
+export function resumeNarration() {
+
+if (synth.paused) {
+
+synth.resume()
+
+EventBus.emit("voiceResumed")
+
+}
 
 }
