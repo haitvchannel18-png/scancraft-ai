@@ -1,84 +1,74 @@
-// ================= IMPORTS =================
+// modules/ai/object-brain.js
 
-import { runVisionPipeline } from "../vision/vision-pipeline.js"
-import { runKnowledgeStage, getPrimaryKnowledge } from "../vision/knowledge-stage.js"
+import { EventBus } from "../core/events.js"
+
+import { generateExplanation } from "./explain-ai.js"
+import { updateContext } from "./context.js"
+import { startConversation } from "./object-chat.js"
 
 import { speak } from "../voice/narration.js"
+import { renderAIChat } from "../ui/ai-chat-ui.js"
 
-import { searchAmazon } from "../commerce/amazon-search.js"
-import { searchFlipkart } from "../commerce/flipkart-search.js"
-import { compareProducts } from "../commerce/product-compare.js"
+import { cacheKnowledge } from "../memory/cache-manager.js"
+import { logAI } from "../utils/ai-logger.js"
 
-import { renderObjectPanel } from "../ui/object-panel.js"
-import { renderCards } from "../ui/card-renderer.js"
+let activeObject = null
+let activeKnowledge = null
 
-import { emit } from "../core/events.js"
+export function initObjectBrain(){
+
+EventBus.on("visionKnowledgeComplete",handleVisionKnowledge)
+
+EventBus.emit("objectBrainReady")
+
+}
 
 
 
-// ================= MAIN ENTRY =================
+async function handleVisionKnowledge(knowledgeResults){
 
-export async function analyzeScene(frame){
+if(!knowledgeResults || knowledgeResults.length === 0) return
+
+const mainObject = knowledgeResults[0]
+
+activeObject = mainObject.object
+activeKnowledge = mainObject
 
 try{
 
-emit("brain:analysis:start")
+updateContext(mainObject)
 
-// 1️⃣ vision pipeline
+const explanation = await generateExplanation(mainObject)
 
-const visionResults = await runVisionPipeline(frame)
+const payload = {
 
-if(!visionResults || visionResults.length === 0){
-
-emit("brain:no-object")
-
-return null
-
-}
-
-
-// 2️⃣ knowledge stage
-
-const knowledgeResults = await runKnowledgeStage(visionResults)
-
-const primary = getPrimaryKnowledge(knowledgeResults)
-
-if(!primary){
-
-emit("brain:no-knowledge")
-
-return null
+object: mainObject.object,
+brand: mainObject.brand,
+category: mainObject.category,
+confidence: mainObject.confidence,
+description: explanation,
+images: mainObject.images || [],
+price: mainObject.price,
+materials: mainObject.materials,
+history: mainObject.history
 
 }
 
+cacheKnowledge(mainObject.object,payload)
 
-// 3️⃣ render UI
+renderAIChat(payload)
 
-renderObjectPanel(primary)
+speak(explanation)
 
-renderCards(primary)
+EventBus.emit("objectBrainComplete",payload)
 
-
-// 4️⃣ voice explanation
-
-await speak(primary.description)
-
-
-// 5️⃣ commerce search
-
-loadCommerce(primary.name)
-
-emit("brain:analysis:complete")
-
-return primary
+logAI("ObjectBrain",payload)
 
 }catch(err){
 
-console.error("Object brain error", err)
+console.error("Object brain error",err)
 
-emit("brain:error")
-
-return null
+EventBus.emit("objectBrainError",err)
 
 }
 
@@ -86,144 +76,37 @@ return null
 
 
 
-// ================= COMMERCE =================
+export function getActiveObject(){
 
-async function loadCommerce(objectName){
-
-try{
-
-const amazon = await searchAmazon(objectName)
-
-const flipkart = await searchFlipkart(objectName)
-
-const products = compareProducts([...amazon,...flipkart])
-
-emit("commerce:results", products)
-
-}catch(err){
-
-console.warn("Commerce search failed")
-
-}
+return activeObject
 
 }
 
 
 
-// ================= OBJECT CHAT =================
+export function getActiveKnowledge(){
 
-export async function askObject(objectData, question){
-
-try{
-
-emit("brain:question:start")
-
-const context = buildContext(objectData)
-
-const answer = await queryAI(context, question)
-
-emit("brain:question:answer", answer)
-
-await speak(answer)
-
-return answer
-
-}catch(err){
-
-console.error("Object chat error")
-
-return "Sorry, I could not answer that."
-
-}
+return activeKnowledge
 
 }
 
 
 
-// ================= CONTEXT BUILDER =================
+export function askObject(question){
 
-function buildContext(object){
+if(!activeKnowledge) return
 
-return {
-
-name: object.name,
-
-category: object.category,
-
-purpose: object.purpose,
-
-materials: object.material,
-
-history: object.history
-
-}
+startConversation(question,activeKnowledge)
 
 }
 
 
 
-// ================= AI QUERY =================
+export function resetObjectBrain(){
 
-async function queryAI(context, question){
+activeObject = null
+activeKnowledge = null
 
-const prompt = `
-Object: ${context.name}
-Category: ${context.category}
-Purpose: ${context.purpose}
-Materials: ${context.materials}
-History: ${context.history}
-
-User Question: ${question}
-
-Answer clearly.
-`
-
-// future AI integration
-
-return "This object is commonly used for " + context.purpose
-
-}
-
-
-
-// ================= FUTURE IDEAS =================
-
-export function generateFutureIdeas(object){
-
-const ideas = []
-
-if(object.category === "vehicle"){
-
-ideas.push("AI self driving upgrade")
-
-ideas.push("electric powered version")
-
-}
-
-if(object.category === "furniture"){
-
-ideas.push("smart ergonomic design")
-
-ideas.push("adjustable AI posture support")
-
-}
-
-return ideas
-
-}
-
-
-
-// ================= DIY IDEAS =================
-
-export function generateDIY(object){
-
-const diy = []
-
-diy.push(`Repair guide for ${object.name}`)
-
-diy.push(`Creative reuse of ${object.name}`)
-
-return diy
+EventBus.emit("objectBrainReset")
 
 }
