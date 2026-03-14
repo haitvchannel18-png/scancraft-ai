@@ -1,98 +1,168 @@
-// modules/core/pipeline.js
+/**
+ * ScanCraft AI
+ * Core Vision Pipeline Orchestrator
+ * MARK 5.1 Architecture
+ */
 
-import { EventBus } from "./events.js"
+import State from "./state-manager.js"
+import Events from "./events.js"
 
-import { detectObjects } from "../detection/yolo.js"
-import { extractFeatures } from "../vision-search/feature-extractor.js"
-import { searchSimilar } from "../vision-search/similarity-search.js"
+class VisionPipeline {
 
-import { reasoningEngine } from "../ai/reasoning-engine.js"
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
+    constructor() {
 
-let initialized = false
+        this.modules = {}
 
+        this.running = false
 
-export async function initPipeline(){
+        this.stages = [
+            "camera",
+            "detection",
+            "vision",
+            "ai",
+            "knowledge",
+            "viewer",
+            "ui",
+            "voice"
+        ]
 
-console.log("Initializing Vision Pipeline")
+    }
 
-initialized = true
+    /**
+     * register pipeline modules
+     */
+    register(name, module) {
 
-EventBus.emit("pipelineReady")
+        this.modules[name] = module
+
+    }
+
+    /**
+     * initialize modules
+     */
+    async init() {
+
+        for (const name in this.modules) {
+
+            const mod = this.modules[name]
+
+            if (mod.init) {
+
+                await mod.init()
+
+            }
+
+        }
+
+        console.log("VisionPipeline initialized")
+
+    }
+
+    /**
+     * start full AI pipeline
+     */
+    async start(frame) {
+
+        if (this.running) return
+
+        this.running = true
+
+        let data = frame
+
+        try {
+
+            Events.emit("pipeline:start")
+
+            for (const stage of this.stages) {
+
+                data = await this.runStage(stage, data)
+
+                State.update("pipeline", {
+                    lastStage: stage
+                })
+
+            }
+
+            Events.emit("pipeline:complete", data)
+
+        }
+
+        catch (err) {
+
+            console.error("Pipeline Error:", err)
+
+            Events.emit("pipeline:error", err)
+
+        }
+
+        finally {
+
+            this.running = false
+
+        }
+
+        return data
+
+    }
+
+    /**
+     * execute stage
+     */
+    async runStage(stage, input) {
+
+        const module = this.modules[stage]
+
+        if (!module) {
+
+            return input
+
+        }
+
+        try {
+
+            Events.emit(`stage:${stage}:start`, input)
+
+            let result
+
+            if (module.process) {
+
+                result = await module.process(input)
+
+            } else {
+
+                result = input
+
+            }
+
+            Events.emit(`stage:${stage}:complete`, result)
+
+            return result
+
+        }
+
+        catch (err) {
+
+            Events.emit(`stage:${stage}:error`, err)
+
+            throw err
+
+        }
+
+    }
+
+    /**
+     * stop pipeline
+     */
+    stop() {
+
+        this.running = false
+
+        Events.emit("pipeline:stop")
+
+    }
 
 }
 
+const Pipeline = new VisionPipeline()
 
-
-export async function processFrame(canvas){
-
-if(!initialized) return null
-
-try{
-
-// 1️⃣ Detection
-const detections = await detectObjects(canvas)
-
-if(!detections || detections.length === 0) return null
-
-
-// choose best detection
-const target = detections[0]
-
-
-// 2️⃣ Feature Extraction
-const features = await extractFeatures(canvas, target.box)
-
-
-// 3️⃣ Similarity Search
-const similar = await searchSimilar(features)
-
-
-// 4️⃣ Reasoning
-const reasoning = await reasoningEngine({
-
-label: target.label,
-similarObjects: similar
-
-})
-
-
-// 5️⃣ Knowledge Aggregation
-const knowledge = await aggregateKnowledge({
-
-label: target.label,
-reasoning
-
-})
-
-
-
-const result = {
-
-label: target.label,
-confidence: target.confidence,
-box: target.box,
-
-similarObjects: similar,
-
-knowledge
-
-}
-
-
-EventBus.emit("pipelineResult", result)
-
-return result
-
-
-}catch(err){
-
-console.error("Pipeline error",err)
-
-EventBus.emit("pipelineError",err)
-
-return null
-
-}
-
-}
+export default Pipeline
