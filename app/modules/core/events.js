@@ -1,90 +1,103 @@
-// Ultra Advanced Event Bus for ScanCraft AI
+/**
+ * ScanCraft AI
+ * Global Event Bus
+ * High performance event system
+ */
 
-class EventBusClass {
+class EventBus {
 
-constructor(){
+    constructor() {
 
-this.listeners = new Map()
+        this.events = {}
 
-this.history = []
+    }
+
+    /**
+     * register event listener
+     */
+    on(event, callback) {
+
+        if (!this.events[event]) {
+
+            this.events[event] = []
+
+        }
+
+        this.events[event].push(callback)
+
+    }
+
+    /**
+     * register one time event
+     */
+    once(event, callback) {
+
+        const wrapper = (data) => {
+
+            callback(data)
+
+            this.off(event, wrapper)
+
+        }
+
+        this.on(event, wrapper)
+
+    }
+
+    /**
+     * remove listener
+     */
+    off(event, callback) {
+
+        if (!this.events[event]) return
+
+        this.events[event] =
+            this.events[event].filter(cb => cb !== callback)
+
+    }
+
+    /**
+     * emit event
+     */
+    emit(event, data = null) {
+
+        if (!this.events[event]) return
+
+        for (const cb of this.events[event]) {
+
+            try {
+
+                cb(data)
+
+            } catch (err) {
+
+                console.error("EventBus error:", err)
+
+            }
+
+        }
+
+    }
+
+    /**
+     * remove all listeners
+     */
+    clear(event) {
+
+        if (event) {
+
+            delete this.events[event]
+
+        } else {
+
+            this.events = {}
+
+        }
+
+    }
 
 }
 
-on(event,callback){
+const Events = new EventBus()
 
-if(!this.listeners.has(event)){
-this.listeners.set(event,new Set())
-}
-
-this.listeners.get(event).add(callback)
-
-}
-
-once(event,callback){
-
-const wrapper = (...args)=>{
-
-callback(...args)
-
-this.off(event,wrapper)
-
-}
-
-this.on(event,wrapper)
-
-}
-
-off(event,callback){
-
-if(!this.listeners.has(event)) return
-
-this.listeners.get(event).delete(callback)
-
-}
-
-emit(event,data){
-
-this.history.push({
-event,
-data,
-time:Date.now()
-})
-
-if(!this.listeners.has(event)) return
-
-for(const listener of this.listeners.get(event)){
-
-try{
-
-listener(data)
-
-}catch(err){
-
-console.error("EventBus error:",err)
-
-}
-
-}
-
-}
-
-clear(event){
-
-if(event){
-this.listeners.delete(event)
-}else{
-this.listeners.clear()
-}
-
-}
-
-getHistory(limit=50){
-
-return this.history.slice(-limit)
-
-}
-
-}
-
-
-export const EventBus = new EventBusClass()
+export default Events
