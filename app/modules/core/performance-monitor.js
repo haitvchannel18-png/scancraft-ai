@@ -1,149 +1,130 @@
 /**
  * ScanCraft AI
  * Performance Monitor
- * Tracks FPS, inference latency, module timing
+ * Real-time performance analytics
  */
 
 import Events from "./events.js"
 
 class PerformanceMonitor {
 
-    constructor() {
+constructor(){
 
-        this.metrics = {
-            fps: 0,
-            frameTime: 0,
-            inferenceTime: 0,
-            pipelineTime: 0,
-            memory: 0,
-            modules: {}
-        }
+this.stats = {
+fps:0,
+frameTime:0,
+pipelineTime:0,
+inferenceTime:0,
+memory:0,
+modules:{}
+}
 
-        this.frameCount = 0
-        this.lastTime = performance.now()
+this.frameCount = 0
+this.lastFrameTime = performance.now()
 
-    }
-
-    /**
-     * start timing
-     */
-    start(label) {
-
-        if (!this.metrics.modules[label]) {
-
-            this.metrics.modules[label] = {}
-
-        }
-
-        this.metrics.modules[label].start = performance.now()
-
-    }
-
-    /**
-     * end timing
-     */
-    end(label) {
-
-        const mod = this.metrics.modules[label]
-
-        if (!mod || !mod.start) return
-
-        mod.time = performance.now() - mod.start
-
-        Events.emit("performance:module", {
-            module: label,
-            time: mod.time
-        })
-
-    }
-
-    /**
-     * track frame rate
-     */
-    frame() {
-
-        this.frameCount++
-
-        const now = performance.now()
-
-        const delta = now - this.lastTime
-
-        if (delta >= 1000) {
-
-            this.metrics.fps = this.frameCount
-
-            this.frameCount = 0
-
-            this.lastTime = now
-
-            Events.emit("performance:fps", this.metrics.fps)
-
-        }
-
-    }
-
-    /**
-     * pipeline latency
-     */
-    pipelineStart() {
-
-        this.pipelineTimer = performance.now()
-
-    }
-
-    pipelineEnd() {
-
-        this.metrics.pipelineTime =
-            performance.now() - this.pipelineTimer
-
-        Events.emit("performance:pipeline", this.metrics.pipelineTime)
-
-    }
-
-    /**
-     * inference timing
-     */
-    inferenceStart() {
-
-        this.inferenceTimer = performance.now()
-
-    }
-
-    inferenceEnd() {
-
-        this.metrics.inferenceTime =
-            performance.now() - this.inferenceTimer
-
-        Events.emit("performance:ai", this.metrics.inferenceTime)
-
-    }
-
-    /**
-     * memory usage
-     */
-    updateMemory() {
-
-        if (performance.memory) {
-
-            this.metrics.memory = performance.memory.usedJSHeapSize
-
-            Events.emit("performance:memory", this.metrics.memory)
-
-        }
-
-    }
-
-    /**
-     * get performance stats
-     */
-    getStats() {
-
-        return this.metrics
-
-    }
+this.timers = {}
 
 }
 
-const Performance = new PerformanceMonitor()
+start(label){
 
-export default Performance
+this.timers[label] = performance.now()
+
+}
+
+end(label){
+
+const start = this.timers[label]
+
+if(!start) return
+
+const duration = performance.now() - start
+
+this.stats.modules[label] = duration
+
+Events.emit("performance:module",{
+module:label,
+time:duration
+})
+
+delete this.timers[label]
+
+}
+
+frame(){
+
+this.frameCount++
+
+const now = performance.now()
+
+const delta = now - this.lastFrameTime
+
+if(delta >= 1000){
+
+this.stats.fps = this.frameCount
+
+this.frameCount = 0
+
+this.lastFrameTime = now
+
+Events.emit("performance:fps",this.stats.fps)
+
+}
+
+}
+
+pipelineStart(){
+
+this.timers.pipeline = performance.now()
+
+}
+
+pipelineEnd(){
+
+const duration = performance.now() - this.timers.pipeline
+
+this.stats.pipelineTime = duration
+
+Events.emit("performance:pipeline",duration)
+
+}
+
+inferenceStart(){
+
+this.timers.inference = performance.now()
+
+}
+
+inferenceEnd(){
+
+const duration = performance.now() - this.timers.inference
+
+this.stats.inferenceTime = duration
+
+Events.emit("performance:ai",duration)
+
+}
+
+updateMemory(){
+
+if(performance.memory){
+
+this.stats.memory = performance.memory.usedJSHeapSize
+
+Events.emit("performance:memory",this.stats.memory)
+
+}
+
+}
+
+getStats(){
+
+return this.stats
+
+}
+
+}
+
+const Monitor = new PerformanceMonitor()
+
+export default Monitor
