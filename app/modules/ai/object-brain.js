@@ -1,112 +1,170 @@
-// modules/ai/object-brain.js
+/**
+ * ScanCraft AI
+ * Object Brain (Central Intelligence System)
+ */
 
-import { EventBus } from "../core/events.js"
+import Events from "../core/events.js"
+import State from "../core/state-manager.js"
+import Performance from "../core/performance.js"
 
-import { generateExplanation } from "./explain-ai.js"
-import { updateContext } from "./context.js"
-import { startConversation } from "./object-chat.js"
+import ExplainAI from "./explain-ai.js"
+import Reasoning from "./reasoning-engine.js"
+import Knowledge from "../knowledge/knowledge-aggregator.js"
 
-import { speak } from "../voice/narration.js"
-import { renderAIChat } from "../ui/ai-chat-ui.js"
+class ObjectBrain {
 
-import { cacheKnowledge } from "../memory/cache-manager.js"
-import { logAI } from "../utils/ai-logger.js"
+constructor(){
 
-let activeObject = null
-let activeKnowledge = null
-
-export function initObjectBrain(){
-
-EventBus.on("visionKnowledgeComplete",handleVisionKnowledge)
-
-EventBus.emit("objectBrainReady")
+this.currentObject = null
+this.history = []
 
 }
 
+async process(detections){
 
+if(!detections || detections.length === 0) return null
 
-async function handleVisionKnowledge(knowledgeResults){
+Performance.start("brain-total")
 
-if(!knowledgeResults || knowledgeResults.length === 0) return
+// Pick main object
+const primary = detections[0]
+this.currentObject = primary
 
-const mainObject = knowledgeResults[0]
+// Save to state
+State.set("currentObject", primary)
 
-activeObject = mainObject.object
-activeKnowledge = mainObject
+// Save history
+this.history.push(primary)
 
-try{
+// Step 1: Knowledge Fetch
+const knowledge = await Knowledge.get(primary.label)
 
-updateContext(mainObject)
+// Step 2: Reasoning
+const reasoning = await Reasoning.analyze(primary, knowledge)
 
-const explanation = await generateExplanation(mainObject)
+// Step 3: Explanation
+const explanation = await ExplainAI.explain(detections)
 
-const payload = {
+// Step 4: Final Brain Output
+const output = this.buildOutput({
+object: primary,
+knowledge,
+reasoning,
+explanation
+})
 
-object: mainObject.object,
-brand: mainObject.brand,
-category: mainObject.category,
-confidence: mainObject.confidence,
-description: explanation,
-images: mainObject.images || [],
-price: mainObject.price,
-materials: mainObject.materials,
-history: mainObject.history
+Performance.end("brain-total")
 
-}
+Events.emit("brain:result", output)
 
-cacheKnowledge(mainObject.object,payload)
-
-renderAIChat(payload)
-
-speak(explanation)
-
-EventBus.emit("objectBrainComplete",payload)
-
-logAI("ObjectBrain",payload)
-
-}catch(err){
-
-console.error("Object brain error",err)
-
-EventBus.emit("objectBrainError",err)
+return output
 
 }
 
-}
+buildOutput({object, knowledge, reasoning, explanation}){
 
+return {
 
+id: Date.now(),
 
-export function getActiveObject(){
+object: {
+label: object.label,
+confidence: object.confidence,
+type: object.type
+},
 
-return activeObject
+brain: {
 
-}
+// Smart Summary
+summary: this.generateSummary(object, knowledge),
 
+// Deep Explanation
+explanation: explanation,
 
+// AI Thinking
+reasoning: reasoning,
 
-export function getActiveKnowledge(){
+// Metadata
+confidence: object.confidence,
+source: object.source
 
-return activeKnowledge
+},
 
-}
+actions: this.generateActions(object),
 
-
-
-export function askObject(question){
-
-if(!activeKnowledge) return
-
-startConversation(question,activeKnowledge)
-
-}
-
-
-
-export function resetObjectBrain(){
-
-activeObject = null
-activeKnowledge = null
-
-EventBus.emit("objectBrainReset")
+ui: this.generateUIHints(object)
 
 }
+
+}
+
+generateSummary(object, knowledge){
+
+if(knowledge?.description){
+return knowledge.description
+}
+
+return `This is a ${object.label} detected with ${(object.confidence*100).toFixed(1)}% confidence.`
+
+}
+
+generateActions(object){
+
+const actions = []
+
+// Basic actions
+actions.push("Explain")
+actions.push("Search")
+actions.push("Compare")
+
+// Smart actions
+if(object.type === "brand"){
+actions.push("Buy Online")
+}
+
+if(object.type === "object"){
+actions.push("How to Use")
+}
+
+return actions
+
+}
+
+generateUIHints(object){
+
+return {
+highlight: true,
+showPanel: true,
+animate: true,
+voiceReady: true,
+color: this.getColor(object.type)
+}
+
+}
+
+getColor(type){
+
+switch(type){
+
+case "brand": return "#00FFD1"
+case "object": return "#4DA3FF"
+case "inferred": return "#FFC857"
+default: return "#FFFFFF"
+
+}
+
+}
+
+getHistory(){
+return this.history
+}
+
+getCurrent(){
+return this.currentObject
+}
+
+}
+
+const Brain = new ObjectBrain()
+
+export default Brain
