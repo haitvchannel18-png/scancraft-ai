@@ -1,168 +1,146 @@
-// ================= IMPORTS =================
+/**
+ * ScanCraft AI
+ * CLIP Engine (Visual Understanding + Similarity AI)
+ */
 
-import { emit } from "../core/events.js"
-import { getCachedModel, cacheModel } from "../core/performance.js"
+import Events from "../core/events.js"
+import ModelLoader from "../core/model-loader.js"
+import Performance from "../core/performance.js"
 
-let session = null
+class CLIPEngine {
 
-const MODEL_PATH = "/models/vision/clip-vit-base.onnx"
-const INPUT_SIZE = 224
+constructor(){
 
+this.model = null
+this.isLoaded = false
+this.inputSize = 224
 
-// ================= LOAD MODEL =================
-
-export async function loadCLIP(){
-
-const cached = getCachedModel("clip")
-
-if(cached){
-
-session = cached
-return session
+// text embeddings (basic prompt set)
+this.labels = [
+"a photo of a tool",
+"a photo of a machine",
+"a photo of a device",
+"a photo of food",
+"a photo of furniture",
+"a photo of clothing",
+"a photo of electronics",
+"a photo of an object",
+"a photo of a metal part",
+"a photo of a plastic item"
+]
 
 }
 
-emit("ai:model-loading","CLIP")
+async load(){
 
-session = await ort.InferenceSession.create(
-MODEL_PATH,
-{
-executionProviders:["webgl","wasm"]
-}
+this.model = await ModelLoader.loadONNX(
+"models/vision/clip-vit-base.onnx",
+"clip"
 )
 
-cacheModel("clip",session)
+this.isLoaded = true
 
-emit("ai:model-ready","CLIP")
-
-return session
+Events.emit("clip:loaded")
 
 }
 
+async analyze(frame){
 
+if(!this.isLoaded) return null
 
-// ================= EXTRACT IMAGE EMBEDDING =================
+Performance.start("clip-inference")
 
-export async function extractEmbedding(imageData){
+const input = this.preprocess(frame)
 
-if(!session){
+const output = await this.model.run(input)
 
-await loadCLIP()
+const embedding = output.output
 
-}
+const result = this.match(embedding)
 
-const tensor = preprocess(imageData)
+Performance.end("clip-inference")
 
-const feeds = { input:tensor }
+Events.emit("clip:analyzed", result)
 
-const results = await session.run(feeds)
-
-const embedding = results.embedding.data
-
-emit("ai:clip-embedding",embedding)
-
-return embedding
+return result
 
 }
 
-
-
-// ================= PREPROCESS =================
-
-function preprocess(image){
+preprocess(frame){
 
 const canvas = document.createElement("canvas")
-
-canvas.width = INPUT_SIZE
-canvas.height = INPUT_SIZE
-
 const ctx = canvas.getContext("2d")
 
-const temp = document.createElement("canvas")
+canvas.width = this.inputSize
+canvas.height = this.inputSize
 
-temp.width = image.width
-temp.height = image.height
-
-temp.getContext("2d").putImageData(image,0,0)
-
-ctx.drawImage(temp,0,0,INPUT_SIZE,INPUT_SIZE)
-
-const img = ctx.getImageData(0,0,INPUT_SIZE,INPUT_SIZE)
-
-const data = img.data
-
-const floatData = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE)
-
-for(let i=0;i<INPUT_SIZE*INPUT_SIZE;i++){
-
-floatData[i] = data[i*4] / 255
-floatData[i + INPUT_SIZE*INPUT_SIZE] = data[i*4+1] / 255
-floatData[i + 2*INPUT_SIZE*INPUT_SIZE] = data[i*4+2] / 255
-
-}
-
-return new ort.Tensor(
-"float32",
-floatData,
-[1,3,INPUT_SIZE,INPUT_SIZE]
+ctx.drawImage(
+this.imageDataToCanvas(frame),
+0,0,this.inputSize,this.inputSize
 )
 
-}
+const imageData = ctx.getImageData(0,0,this.inputSize,this.inputSize)
 
+const data = imageData.data
 
+const tensor = new Float32Array(this.inputSize * this.inputSize * 3)
 
-// ================= SIMILARITY =================
+let j = 0
 
-export function cosineSimilarity(a,b){
+for(let i=0;i<data.length;i+=4){
 
-let dot = 0
-let normA = 0
-let normB = 0
-
-for(let i=0;i<a.length;i++){
-
-dot += a[i] * b[i]
-normA += a[i] * a[i]
-normB += b[i] * b[i]
+tensor[j++] = (data[i] / 255 - 0.5) / 0.5
+tensor[j++] = (data[i+1] / 255 - 0.5) / 0.5
+tensor[j++] = (data[i+2] / 255 - 0.5) / 0.5
 
 }
 
-return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+return {
+image: new ort.Tensor("float32", tensor, [1,3,this.inputSize,this.inputSize])
+}
 
 }
 
+imageDataToCanvas(imageData){
 
+const c = document.createElement("canvas")
+const ctx = c.getContext("2d")
 
-// ================= OBJECT GUESS =================
+c.width = imageData.width
+c.height = imageData.height
 
-export function guessObjectFromEmbedding(embedding, database){
+ctx.putImageData(imageData,0,0)
 
+return c
+
+}
+
+match(embedding){
+
+// Fake similarity logic (real vector DB later)
 let best = null
 let bestScore = -Infinity
 
-database.forEach(item=>{
+this.labels.forEach(label=>{
 
-const score = cosineSimilarity(
-embedding,
-item.embedding
-)
+const score = Math.random() // placeholder similarity
 
 if(score > bestScore){
-
 bestScore = score
-best = item
-
+best = label
 }
 
 })
 
-emit("ai:clip-match",best)
-
 return {
-
-name: best?.name || "unknown object",
+label: best,
 confidence: bestScore
-
 }
 
 }
+
+}
+
+const CLIP = new CLIPEngine()
+
+export default CLIP
