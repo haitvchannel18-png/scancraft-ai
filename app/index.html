@@ -1,1 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
 
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>ScanCraft AI 💀</title>
+
+<!-- 🔥 PWA -->
+<link rel="manifest" href="./manifest.json" />
+
+<!-- 🎨 CSS -->
+<link rel="stylesheet" href="./style.css" />
+
+<!-- 🌌 FONT -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet">
+
+<meta name="theme-color" content="#000000" />
+
+</head>
+
+<body>
+
+<div id="app">
+
+    <!-- 🎥 CAMERA -->
+    <video id="camera" autoplay playsinline></video>
+
+    <!-- 🧠 OVERLAY -->
+    <canvas id="overlay"></canvas>
+
+    <!-- ⚡ LOADING -->
+    <div id="loading" class="hidden">
+        <div class="loader"></div>
+        <p>AI analyzing...</p>
+    </div>
+
+    <!-- 🎯 OBJECT PANEL -->
+    <div id="object-panel" class="panel hidden">
+        <h2 id="object-name"></h2>
+        <p id="object-info"></p>
+    </div>
+
+    <!-- 🎤 VOICE -->
+    <div id="voice-bubble" class="hidden">
+        <span>AI Speaking...</span>
+    </div>
+
+    <!-- 💎 PRO BADGE -->
+    <div id="pro-badge" class="hidden">
+        PRO USER
+    </div>
+
+    <!-- 💳 GO PRO BUTTON -->
+    <button id="pro-btn" class="pro-btn">
+        🚀 Go Pro
+    </button>
+
+    <!-- 📢 BANNER AD PLACEHOLDER -->
+    <div id="ad-banner">
+        <p>Ad Loading...</p>
+    </div>
+
+    <!-- 🎮 CONTROLS -->
+    <div id="controls">
+        <button id="scan-btn">SCAN</button>
+        <button id="stop-btn">STOP</button>
+        <button id="history-btn">HISTORY</button>
+    </div>
+
+</div>
+
+<!-- 🔊 AUDIO UNLOCK -->
+<div id="audio-unlock">
+    <button id="start-audio">Start Experience</button>
+</div>
+
+<!-- 🚀 MAIN SCRIPT -->
+<script type="module" src="./app.js"></script>
+
+<!-- 💀 UI LOGIC (PRO + ADS CONTROL) -->
+<script type="module">
+
+import User from "./modules/auth/user.js"
+import AdsController from "./modules/ads/ads-controller.js"
+
+const proBadge = document.getElementById("pro-badge")
+const proBtn = document.getElementById("pro-btn")
+const adBanner = document.getElementById("ad-banner")
+
+// 👤 check user
+const user = User.get()
+
+if(user?.isPro){
+
+// 💎 PRO USER UI
+proBadge.classList.remove("hidden")
+proBtn.style.display = "none"
+adBanner.style.display = "none"
+
+}else{
+
+// 💰 FREE USER UI
+proBadge.classList.add("hidden")
+proBtn.style.display = "block"
+adBanner.style.display = "block"
+
+}
+
+</script>
+
+<!-- 🔧 SERVICE WORKER -->
+<script>
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./service-worker.js")
+}
+</script>
+
+</body>
+</html>
