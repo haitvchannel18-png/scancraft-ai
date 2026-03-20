@@ -1,147 +1,111 @@
 // modules/ui/card-renderer.js
 
 import { EventBus } from "../core/events.js"
+import Animation from "./animation-engine.js"
 
-let container
+class CardRenderer {
 
-export function initCardRenderer(containerId="card-container"){
+constructor(){
+this.container = document.getElementById("card-container")
+}
 
-container = document.getElementById(containerId)
+// 🔥 MAIN RENDER
+render(data){
 
-attachEvents()
+if(!this.container || !data) return
+
+EventBus.emit("cardRenderStart", data)
+
+// 🧠 clear old
+this.container.innerHTML = ""
+
+// 🧠 create card
+const card = this.createCard(data)
+
+this.container.appendChild(card)
+
+// ✨ animate
+Animation.apply(card, "scale-in")
+
+EventBus.emit("cardRenderComplete", data)
 
 }
 
-function attachEvents(){
-
-EventBus.on("renderProductCards",renderProductCards)
-
-EventBus.on("renderImageCards",renderImageCards)
-
-EventBus.on("renderInfoCards",renderInfoCards)
-
-}
-
-export function clearCards(){
-
-if(!container) return
-
-container.innerHTML = ""
-
-}
-
-function createCard(){
+// 🧠 CREATE CARD
+createCard(data){
 
 const card = document.createElement("div")
-card.className = "info-card"
+card.className = "ai-card"
+
+card.innerHTML = `
+<div class="card-header">
+<img src="${data.image || ''}" class="card-img"/>
+<h2>${data.title || data.object || "Unknown Object"}</h2>
+</div>
+
+<div class="card-body">
+
+<div class="card-section">
+<span class="label">Category:</span>
+<span>${data.category || "Unknown"}</span>
+</div>
+
+<div class="card-section">
+<span class="label">Material:</span>
+<span>${this.formatArray(data.materials)}</span>
+</div>
+
+<div class="card-section">
+<span class="label">Price:</span>
+<span>${data.price || "N/A"}</span>
+</div>
+
+<div class="card-section">
+<span class="label">Confidence:</span>
+<span>${Math.round((data.confidence || 0.5)*100)}%</span>
+</div>
+
+</div>
+
+<div class="card-actions">
+<button class="btn-compare">Compare</button>
+<button class="btn-buy">Buy</button>
+<button class="btn-3d">View 3D</button>
+</div>
+`
+
+// 🎯 BUTTON EVENTS
+this.attachEvents(card, data)
 
 return card
 
 }
 
-function renderProductCards(products){
+// 🎯 EVENTS
+attachEvents(card, data){
 
-clearCards()
+card.querySelector(".btn-compare").onclick = ()=>{
+EventBus.emit("compareRequest", data)
+}
 
-products.forEach(product=>{
+card.querySelector(".btn-buy").onclick = ()=>{
+EventBus.emit("buyRequest", data)
+}
 
-const card = createCard()
-
-const img = document.createElement("img")
-img.src = product.image || ""
-img.className = "card-image"
-
-const title = document.createElement("h3")
-title.textContent = product.title || "Product"
-
-const price = document.createElement("p")
-price.className = "card-price"
-price.textContent = product.price || ""
-
-const link = document.createElement("a")
-link.href = product.url || "#"
-link.target = "_blank"
-link.textContent = "View"
-
-card.appendChild(img)
-card.appendChild(title)
-card.appendChild(price)
-card.appendChild(link)
-
-container.appendChild(card)
-
-})
+card.querySelector(".btn-3d").onclick = ()=>{
+EventBus.emit("view3D", data)
+}
 
 }
 
-function renderImageCards(images){
+// 🧠 FORMAT ARRAY
+formatArray(arr){
 
-clearCards()
-
-images.forEach(src=>{
-
-const card = createCard()
-
-const img = document.createElement("img")
-img.src = src
-img.className = "card-image"
-
-card.appendChild(img)
-
-container.appendChild(card)
-
-})
+if(!arr || !arr.length) return "Unknown"
+return arr.join(", ")
 
 }
 
-function renderInfoCards(infoList){
-
-clearCards()
-
-infoList.forEach(info=>{
-
-const card = createCard()
-
-const title = document.createElement("h3")
-title.textContent = info.title || ""
-
-const text = document.createElement("p")
-text.textContent = info.text || ""
-
-card.appendChild(title)
-card.appendChild(text)
-
-container.appendChild(card)
-
-})
-
 }
 
-export function renderSingleCard(title,text,image){
-
-clearCards()
-
-const card = createCard()
-
-const t = document.createElement("h3")
-t.textContent = title
-
-const p = document.createElement("p")
-p.textContent = text
-
-card.appendChild(t)
-card.appendChild(p)
-
-if(image){
-
-const img = document.createElement("img")
-img.src = image
-img.className = "card-image"
-
-card.appendChild(img)
-
-}
-
-container.appendChild(card)
-
-}
+export default new CardRenderer()
