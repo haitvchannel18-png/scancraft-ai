@@ -1,104 +1,187 @@
-// modules/camera/camera.js
+/**
+ * ScanCraft AI
+ * Ultra Camera Engine (PWA + AI Ready)
+ */
 
-import { EventBus } from "../core/events.js"
+import Events from "../core/events.js"
+import State from "../core/state-manager.js"
 
-let stream = null
-let videoElement = null
-let currentFacing = "environment"
+class CameraEngine {
 
-const constraints = {
+constructor(){
 
-video: {
-facingMode: currentFacing,
-width: { ideal: 1280 },
-height: { ideal: 720 },
-focusMode: "continuous",
-exposureMode: "continuous",
-whiteBalanceMode: "continuous"
-},
+this.video = null
+this.stream = null
+this.canvas = document.createElement("canvas")
+this.ctx = this.canvas.getContext("2d")
 
-audio: false
+this.isRunning = false
+
+this.facingMode = "environment" // back camera
+this.resolution = { width: 1280, height: 720 }
+
+this.frameRate = 30
 
 }
 
+async init(videoElement){
 
-export async function startCamera(video){
+this.video = videoElement
 
-videoElement = video
+await this.startCamera()
+
+}
+
+async startCamera(){
 
 try{
 
-stream = await navigator.mediaDevices.getUserMedia(constraints)
+this.stream = await navigator.mediaDevices.getUserMedia({
+video:{
+facingMode:this.facingMode,
+width:{ ideal: this.resolution.width },
+height:{ ideal: this.resolution.height },
+frameRate:{ ideal: this.frameRate }
+},
+audio:false
+})
 
-video.srcObject = stream
+this.video.srcObject = this.stream
+await this.video.play()
 
-await video.play()
+this.isRunning = true
 
-EventBus.emit("cameraStarted")
+Events.emit("camera:started")
+
+State.set("cameraActive", true)
 
 }catch(err){
 
-console.error("Camera error:",err)
+console.error("Camera Error:", err)
+Events.emit("camera:error", err)
 
-EventBus.emit("cameraError",err)
+}
+
+}
+
+stopCamera(){
+
+if(this.stream){
+
+this.stream.getTracks().forEach(track => track.stop())
+
+this.video.srcObject = null
+
+this.isRunning = false
+
+Events.emit("camera:stopped")
+
+State.set("cameraActive", false)
 
 }
 
 }
 
+switchCamera(){
 
+this.facingMode = this.facingMode === "environment" ? "user" : "environment"
 
-export function stopCamera(){
-
-if(!stream) return
-
-stream.getTracks().forEach(track=>track.stop())
-
-EventBus.emit("cameraStopped")
+this.stopCamera()
+this.startCamera()
 
 }
 
+captureFrame(){
 
+if(!this.video) return null
 
-export async function switchCamera(){
+this.canvas.width = this.video.videoWidth
+this.canvas.height = this.video.videoHeight
 
-if(!videoElement) return
+this.ctx.drawImage(this.video, 0, 0)
 
-currentFacing = currentFacing === "environment"
-? "user"
-: "environment"
+const imageData = this.canvas.toDataURL("image/jpeg", 0.9)
 
-stopCamera()
+Events.emit("camera:frameCaptured", imageData)
 
-constraints.video.facingMode = currentFacing
-
-await startCamera(videoElement)
-
-EventBus.emit("cameraSwitched",currentFacing)
+return imageData
 
 }
 
+getFrameTensor(){
 
+// future AI pipeline ke liye raw pixel data
+this.canvas.width = this.video.videoWidth
+this.canvas.height = this.video.videoHeight
 
-export function captureFrame(canvas){
+this.ctx.drawImage(this.video, 0, 0)
 
-if(!videoElement) return null
+const frame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
 
-const ctx = canvas.getContext("2d")
-
-canvas.width = videoElement.videoWidth
-canvas.height = videoElement.videoHeight
-
-ctx.drawImage(videoElement,0,0,canvas.width,canvas.height)
-
-return canvas
+return frame
 
 }
 
+startStreaming(callback){
 
+const loop = () => {
 
-export function getStream(){
+if(!this.isRunning) return
 
-return stream
+const frame = this.getFrameTensor()
+
+callback(frame)
+
+requestAnimationFrame(loop)
 
 }
+
+loop()
+
+}
+
+setResolution(width, height){
+
+this.resolution = { width, height }
+
+if(this.isRunning){
+
+this.stopCamera()
+this.startCamera()
+
+}
+
+}
+
+setFPS(fps){
+
+this.frameRate = fps
+
+if(this.isRunning){
+
+this.stopCamera()
+this.startCamera()
+
+}
+
+}
+
+enableTorch(enable){
+
+const track = this.stream?.getVideoTracks()[0]
+
+if(track && track.getCapabilities().torch){
+
+track.applyConstraints({
+advanced:[{ torch: enable }]
+})
+
+}
+
+}
+
+}
+
+const Camera = new CameraEngine()
+
+export default Camera
