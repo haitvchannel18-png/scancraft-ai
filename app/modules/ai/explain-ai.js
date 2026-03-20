@@ -1,169 +1,170 @@
-// ================= IMPORTS =================
+/**
+ * ScanCraft AI
+ * Object Brain (Central Intelligence System)
+ */
 
-import { emit } from "../core/events.js"
-import { aggregateKnowledge } from "../knowledge/knowledge-aggregator.js"
+import Events from "../core/events.js"
+import State from "../core/state-manager.js"
+import Performance from "../core/performance.js"
 
+import ExplainAI from "./explain-ai.js"
+import Reasoning from "./reasoning-engine.js"
+import Knowledge from "../knowledge/knowledge-aggregator.js"
 
+class ObjectBrain {
 
-// ================= EXPLAIN OBJECT =================
+constructor(){
 
-export async function explainObject(objectData){
-
-emit("ai:explain:start")
-
-try{
-
-const knowledge = await aggregateKnowledge(objectData)
-
-const explanation = generateExplanation(objectData, knowledge)
-
-emit("ai:explain:complete", explanation)
-
-return explanation
-
-}catch(err){
-
-console.error("AI explanation failed", err)
-
-emit("ai:explain:error")
-
-return fallbackExplanation(objectData)
+this.currentObject = null
+this.history = []
 
 }
 
+async process(detections){
+
+if(!detections || detections.length === 0) return null
+
+Performance.start("brain-total")
+
+// Pick main object
+const primary = detections[0]
+this.currentObject = primary
+
+// Save to state
+State.set("currentObject", primary)
+
+// Save history
+this.history.push(primary)
+
+// Step 1: Knowledge Fetch
+const knowledge = await Knowledge.get(primary.label)
+
+// Step 2: Reasoning
+const reasoning = await Reasoning.analyze(primary, knowledge)
+
+// Step 3: Explanation
+const explanation = await ExplainAI.explain(detections)
+
+// Step 4: Final Brain Output
+const output = this.buildOutput({
+object: primary,
+knowledge,
+reasoning,
+explanation
+})
+
+Performance.end("brain-total")
+
+Events.emit("brain:result", output)
+
+return output
+
 }
 
-
-
-// ================= GENERATE EXPLANATION =================
-
-function generateExplanation(object, knowledge){
+buildOutput({object, knowledge, reasoning, explanation}){
 
 return {
 
-title: object.name,
+id: Date.now(),
 
-overview: generateOverview(object),
+object: {
+label: object.label,
+confidence: object.confidence,
+type: object.type
+},
 
-materials: knowledge.materials || [],
+brain: {
 
-manufacturing: knowledge.manufacturing || "Unknown",
+// Smart Summary
+summary: this.generateSummary(object, knowledge),
 
-history: knowledge.history || "No history data",
+// Deep Explanation
+explanation: explanation,
 
-uses: knowledge.uses || [],
+// AI Thinking
+reasoning: reasoning,
 
-future: predictFuture(object),
+// Metadata
+confidence: object.confidence,
+source: object.source
 
-confidence: object.confidence || 0.5
+},
 
-}
+actions: this.generateActions(object),
 
-}
-
-
-
-// ================= OVERVIEW =================
-
-function generateOverview(object){
-
-return `The scanned object appears to be ${object.name}. 
-This object is commonly categorized under ${object.category}. 
-Based on visual analysis, the system estimates a confidence level of 
-${Math.round(object.confidence*100)} percent.`
+ui: this.generateUIHints(object)
 
 }
 
+}
 
+generateSummary(object, knowledge){
 
-// ================= FUTURE PREDICTION =================
+if(knowledge?.description){
+return knowledge.description
+}
 
-function predictFuture(object){
-
-const category = object.category?.toLowerCase()
-
-if(category === "electronics"){
-
-return "Future versions may integrate smarter AI and improved energy efficiency."
+return `This is a ${object.label} detected with ${(object.confidence*100).toFixed(1)}% confidence.`
 
 }
 
-if(category === "mechanical"){
+generateActions(object){
 
-return "Future designs may include lighter alloys and higher durability."
+const actions = []
+
+// Basic actions
+actions.push("Explain")
+actions.push("Search")
+actions.push("Compare")
+
+// Smart actions
+if(object.type === "brand"){
+actions.push("Buy Online")
+}
+
+if(object.type === "object"){
+actions.push("How to Use")
+}
+
+return actions
 
 }
 
-return "Future developments may improve efficiency and automation."
-
-}
-
-
-
-// ================= CHAT STYLE ANSWER =================
-
-export function answerQuestion(question, objectData){
-
-const q = question.toLowerCase()
-
-if(q.includes("material")){
-
-return `The object is likely made from materials such as ${objectData.materials?.join(", ") || "various industrial materials"}.`
-
-}
-
-if(q.includes("use")){
-
-return `The primary uses of this object include ${objectData.uses?.join(", ") || "general functional purposes"}.`
-
-}
-
-if(q.includes("history")){
-
-return objectData.history || "Historical information is limited."
-
-}
-
-return "The AI system is analyzing the object and generating insights."
-
-}
-
-
-
-// ================= STORY MODE =================
-
-export function generateStory(object){
-
-return `Imagine holding a ${object.name}. 
-This object was designed to solve practical problems in the ${object.category} field. 
-Over time, innovations improved its durability and functionality, making it a key component in modern technology.`
-
-}
-
-
-
-// ================= FALLBACK =================
-
-function fallbackExplanation(object){
+generateUIHints(object){
 
 return {
+highlight: true,
+showPanel: true,
+animate: true,
+voiceReady: true,
+color: this.getColor(object.type)
+}
 
-title: object.name || "Unknown Object",
+}
 
-overview: "The AI system could not generate a full explanation, but the object appears to be a physical device detected by the visual system.",
+getColor(type){
 
-materials: [],
+switch(type){
 
-manufacturing: "Unknown",
-
-history: "Unknown",
-
-uses: [],
-
-future: "Further analysis required",
-
-confidence: object.confidence || 0
+case "brand": return "#00FFD1"
+case "object": return "#4DA3FF"
+case "inferred": return "#FFC857"
+default: return "#FFFFFF"
 
 }
 
 }
+
+getHistory(){
+return this.history
+}
+
+getCurrent(){
+return this.currentObject
+}
+
+}
+
+const Brain = new ObjectBrain()
+
+export default Brain
