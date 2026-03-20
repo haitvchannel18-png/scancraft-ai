@@ -1,91 +1,108 @@
 // modules/commerce/google-shopping.js
 
 import { EventBus } from "../core/events.js"
-import { logAI } from "../utils/ai-logger.js"
+import Amazon from "./amazon-search.js"
+import Flipkart from "./flipkart-search.js"
+import Ebay from "./ebay-search.js"
 
-const GOOGLE_SHOPPING_URL =
-  "https://api.allorigins.win/raw?url=https://www.google.com/search?tbm=shop&q="
+class GoogleShopping {
 
-export async function searchGoogleShopping(query) {
+constructor(){
+this.name = "GoogleShopping-Aggregator"
+}
 
-try{
+// 🔥 MAIN SEARCH
+async search(query){
 
 if(!query) return []
 
-EventBus.emit("googleShoppingSearchStart",query)
+EventBus.emit("googleShoppingStart", query)
 
-const url = GOOGLE_SHOPPING_URL + encodeURIComponent(query)
+try{
 
-const response = await fetch(url)
+// 🧠 MULTI SOURCE SEARCH
+const [amazon, flipkart, ebay] = await Promise.all([
+Amazon.search(query),
+Flipkart.search(query),
+Ebay.search(query)
+])
 
-const html = await response.text()
+// 🧠 MERGE ALL RESULTS
+let combined = [
+...amazon,
+...flipkart,
+...ebay
+]
 
-const products = parseShoppingHTML(html)
+// 🧠 NORMALIZE + SCORE
+combined = this.normalize(combined)
 
-EventBus.emit("googleShoppingSearchComplete",products)
+// 🧠 SORT BEST DEALS
+combined.sort((a,b)=> b.score - a.score)
 
-logAI("GoogleShopping",products)
+// 🧠 LIMIT TOP RESULTS
+const finalResults = combined.slice(0,10)
 
-return products
+EventBus.emit("googleShoppingComplete", finalResults)
+
+return finalResults
 
 }catch(err){
 
-console.error("Google shopping search error",err)
-
-EventBus.emit("googleShoppingSearchError",err)
-
+EventBus.emit("googleShoppingError", err)
 return []
 
 }
 
 }
 
+// 🧠 NORMALIZATION ENGINE
+normalize(products){
 
+return products.map(p=>{
 
-function parseShoppingHTML(html){
+const numericPrice = this.extractPrice(p.price)
 
-const parser = new DOMParser()
+// 💀 smart scoring formula
+const score =
+(5 - numericPrice/2000) + // cheaper = better
+(parseFloat(p.rating || 3)) +
+(p.confidence || 0.5) +
+(this.platformBoost(p.platform))
 
-const doc = parser.parseFromString(html,"text/html")
-
-const results = []
-
-const cards = doc.querySelectorAll(".sh-dgr__grid-result")
-
-cards.forEach(card => {
-
-const title = card.querySelector(".tAxDx")?.innerText
-const priceText = card.querySelector(".a8Pemb")?.innerText
-const image = card.querySelector("img")?.src
-const link = card.querySelector("a")?.href
-const merchant = card.querySelector(".aULzUe")?.innerText
-
-if(!title || !priceText) return
-
-const price = extractPrice(priceText)
-
-results.push({
-name: title,
-price: price,
-image: image,
-link: link,
-market: merchant || "Google Shopping",
-rating: null,
-reviews: null
-})
+return {
+...p,
+numericPrice,
+score
+}
 
 })
 
-return results.slice(0,20)
+}
+
+// 💰 PRICE PARSER
+extractPrice(price){
+
+if(!price) return 1000
+
+const num = price.replace(/[^\d.]/g,"")
+return parseFloat(num) || 1000
 
 }
 
+// 🚀 PLATFORM BOOST
+platformBoost(platform){
 
+const boost = {
+Amazon: 0.5,
+Flipkart: 0.5,
+"eBay": 0.3
+}
 
-function extractPrice(text){
-
-const cleaned = text.replace(/[^0-9.]/g,"")
-
-return parseFloat(cleaned) || null
+return boost[platform] || 0.2
 
 }
+
+}
+
+export default new GoogleShopping()
