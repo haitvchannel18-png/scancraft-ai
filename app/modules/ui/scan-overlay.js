@@ -1,135 +1,116 @@
 // modules/ui/scan-overlay.js
 
 import { EventBus } from "../core/events.js"
+import Animation from "./animation-engine.js"
 
-let canvas
-let ctx
-let container
+class ScanOverlay {
 
-let boxes = []
-let scanActive = false
+constructor(){
+this.canvas = document.getElementById("overlay")
+this.ctx = this.canvas?.getContext("2d")
+this.width = 0
+this.height = 0
+}
 
-export function initScanOverlay(containerId="scan-overlay"){
+// 🔥 INIT
+init(video){
 
-container = document.getElementById(containerId)
+if(!this.canvas || !video) return
 
-canvas = document.createElement("canvas")
-canvas.className = "scan-overlay-canvas"
+this.width = video.videoWidth
+this.height = video.videoHeight
 
-ctx = canvas.getContext("2d")
+this.canvas.width = this.width
+this.canvas.height = this.height
 
-container.appendChild(canvas)
-
-resize()
-
-window.addEventListener("resize",resize)
-
-attachEvents()
+this.canvas.style.display = "block"
 
 }
 
-function resize(){
+// 🧠 DRAW DETECTIONS
+draw(detections){
 
-canvas.width = container.offsetWidth
-canvas.height = container.offsetHeight
+if(!this.ctx) return
 
-}
+this.clear()
 
-function attachEvents(){
+detections.forEach(det => {
 
-EventBus.on("detectionResults",renderBoxes)
+const {x,y,w,h,label,confidence} = det
 
-EventBus.on("scanStart",startScan)
+// 🎯 BOX
+this.ctx.strokeStyle = "#00ffff"
+this.ctx.lineWidth = 2
+this.ctx.strokeRect(x,y,w,h)
 
-EventBus.on("scanStop",stopScan)
+// ✨ LABEL BACKGROUND
+this.ctx.fillStyle = "rgba(0,255,255,0.2)"
+this.ctx.fillRect(x, y-22, w, 22)
 
-}
+// 🧠 TEXT
+this.ctx.fillStyle = "#00ffff"
+this.ctx.font = "14px Arial"
+this.ctx.fillText(
+`${label} (${Math.round(confidence*100)}%)`,
+x+5,
+y-6
+)
 
-function startScan(){
-
-scanActive = true
-
-animateScan()
-
-}
-
-function stopScan(){
-
-scanActive = false
-
-ctx.clearRect(0,0,canvas.width,canvas.height)
-
-}
-
-function renderBoxes(detections){
-
-boxes = detections
-
-draw()
-
-}
-
-function draw(){
-
-ctx.clearRect(0,0,canvas.width,canvas.height)
-
-boxes.forEach(box=>{
-
-drawBox(box)
+// ✨ animation glow
+this.glowEffect(x,y,w,h)
 
 })
 
 }
 
-function drawBox(box){
+// ✨ GLOW EFFECT
+glowEffect(x,y,w,h){
 
-const {x,y,width,height,label,confidence} = box
-
-ctx.strokeStyle = "rgba(0,255,150,0.9)"
-ctx.lineWidth = 2
-
-ctx.strokeRect(x,y,width,height)
-
-ctx.fillStyle = "rgba(0,255,150,0.9)"
-ctx.font = "14px sans-serif"
-
-const text = `${label} ${(confidence*100).toFixed(1)}%`
-
-ctx.fillText(text,x+6,y-6)
+this.ctx.shadowColor = "#00ffff"
+this.ctx.shadowBlur = 10
+this.ctx.strokeRect(x,y,w,h)
+this.ctx.shadowBlur = 0
 
 }
 
-function animateScan(){
+// 🧹 CLEAR
+clear(){
 
-if(!scanActive) return
-
-ctx.clearRect(0,0,canvas.width,canvas.height)
-
-const lineY = (Date.now()/6) % canvas.height
-
-ctx.strokeStyle = "rgba(0,200,255,0.7)"
-ctx.lineWidth = 2
-
-ctx.beginPath()
-ctx.moveTo(0,lineY)
-ctx.lineTo(canvas.width,lineY)
-ctx.stroke()
-
-requestAnimationFrame(animateScan)
+this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height)
 
 }
 
-export function highlightObject(box){
+// 🔥 SCAN LINE EFFECT
+scanLine(){
 
-ctx.strokeStyle = "rgba(255,180,0,1)"
-ctx.lineWidth = 3
+const line = document.createElement("div")
+line.className = "scan-line"
 
-ctx.strokeRect(box.x,box.y,box.width,box.height)
+this.canvas.parentElement.appendChild(line)
+
+setTimeout(()=>{
+line.remove()
+},2000)
 
 }
 
-export function clearOverlay(){
+// 🧠 AUTO EVENTS
+initListeners(){
 
-ctx.clearRect(0,0,canvas.width,canvas.height)
+EventBus.on("scanStart", ()=>{
+this.scanLine()
+})
+
+EventBus.on("detections", (data)=>{
+this.draw(data)
+})
+
+EventBus.on("scanStop", ()=>{
+this.clear()
+})
 
 }
+
+}
+
+export default new ScanOverlay()
