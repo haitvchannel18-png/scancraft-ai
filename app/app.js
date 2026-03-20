@@ -1,4 +1,4 @@
-// 🔥 CORE IMPORTS
+// 🔥 CORE CONFIG
 import CONFIG from "./modules/utils/config.js"
 
 // 🎥 CAMERA
@@ -25,15 +25,14 @@ import Auth from "./modules/auth/auth.js"
 // ☁️ CLOUD
 import CloudSync from "./modules/cloud/cloud-sync.js"
 
-// 🎨 UI
-import Overlay from "./modules/ui/scan-overlay.js"
-import Panel from "./modules/ui/object-panel.js"
-import Loader from "./modules/ui/loading-visuals.js"
-
-// ⚡ GLOBAL STATE
+// ⚡ STATE
+let scanning = false
 let currentUser = null
 
-// 🚀 INIT APP
+//////////////////////////////////////////////////////
+// 🚀 INIT
+//////////////////////////////////////////////////////
+
 async function init(){
 
 console.log("🔥 ScanCraft AI Started")
@@ -47,44 +46,53 @@ currentUser = user
 console.log("👤 User:", user)
 })
 
-// 🎤 Click scan (tap anywhere)
-document.body.addEventListener("click", scanObject)
+// 🔘 Buttons
+document.getElementById("scan-btn").onclick = startScan
+document.getElementById("stop-btn").onclick = stopScan
+
+// 🔊 Mobile audio unlock
+document.getElementById("start-audio").onclick = ()=>{
+SoundManager.unlock()
+document.getElementById("audio-unlock").style.display = "none"
+}
 
 }
 
 //////////////////////////////////////////////////////
-// 🔍 MAIN SCAN PIPELINE (FULL AI FLOW 💀)
+// 🔍 START SCAN
 //////////////////////////////////////////////////////
 
-async function scanObject(){
+async function startScan(){
+
+if(scanning) return
+
+scanning = true
+
+document.getElementById("loading").classList.remove("hidden")
+
+SoundManager.play("scan-start")
 
 try{
-
-Loader.show()
-Overlay.show()
-
-// 🔊 sound
-SoundManager.play("scan-start")
 
 // 🎥 Capture frame
 const frame = Camera.capture()
 
-// 🧠 Vision AI detect
+// 🧠 Vision
 const vision = await VisionAI.detect(frame)
 
-// 🧠 Context understanding
+// 🧠 Context
 const context = await ContextAI.analyze(vision)
 
-// 💬 AI explanation
+// 💬 Explanation
 const explanation = await ObjectChat.explain(context)
 
-// 🧠 Learning
-PatternLearner.learn(vision.label)
-
-// 💰 Price search
+// 💰 Price
 const price = await PriceAggregator.search(vision.label)
 
-// 🧠 Format result
+// 🧠 Learn
+PatternLearner.learn(vision.label)
+
+// 🧠 Format
 const result = ResultFormatter.format({
 vision,
 context,
@@ -92,51 +100,78 @@ explanation,
 price
 })
 
-// 🎨 Show UI
-Panel.show(result)
+// 🎨 UI Update
+showResult(result)
 
-// 🔊 complete sound
+// 🔊 Sound
 SoundManager.play("scan-complete")
 
-// ☁️ SAVE TO CLOUD
+// ☁️ Cloud Save
 if(currentUser){
 await CloudSync.saveScan(currentUser.uid, result)
 }
 
-// 💾 local save
+// 💾 Local Save
 PatternLearner.save()
 
 }catch(e){
 
-console.error("💀 ERROR:", e)
+console.error("💀 Scan Error:", e)
 
 }finally{
 
-Loader.hide()
-Overlay.hide()
+document.getElementById("loading").classList.add("hidden")
+
+scanning = false
 
 }
 
 }
 
 //////////////////////////////////////////////////////
-// 🔐 LOGIN BUTTON
+// ⛔ STOP SCAN
 //////////////////////////////////////////////////////
 
-document.getElementById("login-btn").onclick = async ()=>{
+function stopScan(){
+
+scanning = false
+
+SoundManager.play("click")
+
+document.getElementById("loading").classList.add("hidden")
+
+}
+
+//////////////////////////////////////////////////////
+// 🎨 SHOW RESULT
+//////////////////////////////////////////////////////
+
+function showResult(data){
+
+const panel = document.getElementById("object-panel")
+
+panel.classList.remove("hidden")
+
+document.getElementById("object-name").innerText = data.vision.label || "Unknown"
+
+document.getElementById("object-info").innerText =
+data.explanation || "No details available"
+
+}
+
+//////////////////////////////////////////////////////
+// 🔐 LOGIN (OPTIONAL ADD BUTTON IF NEEDED)
+//////////////////////////////////////////////////////
+
+window.login = async ()=>{
 
 try{
 
 const user = await Auth.login()
-
-console.log("🔥 LOGIN SUCCESS:", user)
-
-SoundManager.play("click")
+console.log("🔥 LOGIN:", user)
 
 }catch(e){
-
-console.error("Login error", e)
-
+console.error(e)
 }
 
 }
