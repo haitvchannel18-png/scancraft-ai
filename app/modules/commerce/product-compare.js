@@ -1,133 +1,98 @@
 // modules/commerce/product-compare.js
 
 import { EventBus } from "../core/events.js"
-import { logAI } from "../utils/ai-logger.js"
 
-let lastComparison = null
+class ProductCompare {
 
-export function compareProducts(products){
+compare(products){
+
+if(!products || products.length < 2) return null
+
+EventBus.emit("productCompareStart")
 
 try{
 
-if(!products || products.length === 0){
-return null
-}
+// 🧠 top 2 compare
+const [a,b] = products
 
-EventBus.emit("productCompareStart",products)
+const comparison = {
 
-const scored = products.map(p => ({
-...p,
-score: computeScore(p)
-}))
+productA: this.extract(a),
+productB: this.extract(b),
 
-const ranked = scored.sort((a,b)=> b.score - a.score)
+winner: this.getWinner(a,b),
 
-const best = ranked[0]
-
-const result = {
-
-bestProduct: best,
-ranking: ranked,
-total: products.length,
-timestamp: Date.now()
+differences: this.getDifferences(a,b)
 
 }
 
-lastComparison = result
+EventBus.emit("productCompareComplete", comparison)
 
-EventBus.emit("productCompareComplete",result)
-
-logAI("ProductCompare",result)
-
-return result
+return comparison
 
 }catch(err){
 
-console.error("Product compare error",err)
-
-EventBus.emit("productCompareError",err)
-
+EventBus.emit("productCompareError", err)
 return null
 
 }
 
 }
 
+// 🧠 EXTRACT CORE DATA
+extract(p){
 
-
-function computeScore(product){
-
-let score = 0
-
-if(product.price){
-
-score += priceScore(product.price)
+return {
+title: p.title,
+price: p.price,
+rating: p.rating,
+platform: p.platform
+}
 
 }
 
-if(product.rating){
+// 🏆 WINNER LOGIC
+getWinner(a,b){
 
-score += product.rating * 20
+const scoreA = this.score(a)
+const scoreB = this.score(b)
 
-}
-
-if(product.reviews){
-
-score += Math.log(product.reviews + 1) * 10
+return scoreA > scoreB ? a.title : b.title
 
 }
 
-if(product.market){
+// 📊 SCORE
+score(p){
 
-score += marketplaceTrust(product.market)
+const price = this.extractPrice(p.price)
 
-}
-
-if(product.image){
-
-score += 10
-
-}
-
-return score
+return (
+(parseFloat(p.rating || 3)) +
+(p.confidence || 0.5) -
+(price / 5000)
+)
 
 }
 
+// 💰 PRICE PARSER
+extractPrice(price){
 
-
-function priceScore(price){
-
-if(price < 500) return 50
-if(price < 1000) return 40
-if(price < 3000) return 30
-if(price < 10000) return 20
-
-return 10
+const num = price.toString().replace(/[^\d.]/g,"")
+return parseFloat(num) || 1000
 
 }
 
+// 🔍 DIFFERENCE ENGINE
+getDifferences(a,b){
 
-
-function marketplaceTrust(market){
-
-const trust = {
-
-Amazon: 30,
-Flipkart: 30,
-Myntra: 25,
-JioMart: 25,
-Snapdeal: 20,
-AliExpress: 15,
-eBay: 15
+return {
+priceDiff: this.extractPrice(a.price) - this.extractPrice(b.price),
+ratingDiff: (parseFloat(a.rating||0) - parseFloat(b.rating||0)).toFixed(2),
+platformDiff: `${a.platform} vs ${b.platform}`
+}
 
 }
 
-return trust[market] || 10
-
 }
 
-
-
-export function getLastComparison(){
-return lastComparison
-}
+export default new ProductCompare()
