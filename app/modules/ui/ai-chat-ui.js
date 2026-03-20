@@ -1,147 +1,114 @@
 // modules/ui/ai-chat-ui.js
 
 import { EventBus } from "../core/events.js"
-import { speak } from "../voice/narration.js"
-import { startConversation, stopConversation } from "../voice/conversation.js"
+import Audio from "../audio/ai-sounds.js"
 
-let chatContainer
-let messagesContainer
-let inputField
-let sendBtn
-let micBtn
+class AIChatUI {
 
-export function initAIChat(containerId="ai-chat"){
-
-chatContainer = document.getElementById(containerId)
-
-messagesContainer = document.createElement("div")
-messagesContainer.className = "ai-chat-messages"
-
-const inputArea = document.createElement("div")
-inputArea.className = "ai-chat-input"
-
-inputField = document.createElement("input")
-inputField.placeholder = "Ask anything about this object..."
-
-sendBtn = document.createElement("button")
-sendBtn.innerText = "Send"
-
-micBtn = document.createElement("button")
-micBtn.innerText = "🎤"
-
-inputArea.appendChild(inputField)
-inputArea.appendChild(sendBtn)
-inputArea.appendChild(micBtn)
-
-chatContainer.appendChild(messagesContainer)
-chatContainer.appendChild(inputArea)
-
-attachEvents()
-
+constructor(){
+this.container = document.getElementById("ai-chat")
+this.messages = []
 }
 
-function attachEvents(){
+// 🔥 INIT
+init(){
 
-sendBtn.onclick = sendMessage
+if(!this.container) return
 
-inputField.addEventListener("keypress",e=>{
+this.container.innerHTML = `
+<div class="chat-window"></div>
+<div class="chat-input">
+<input id="chat-input" placeholder="Ask anything about this object..." />
+<button id="send-btn">➤</button>
+</div>
+`
+
+this.bindEvents()
+}
+
+// 🎯 EVENTS
+bindEvents(){
+
+const input = document.getElementById("chat-input")
+const btn = document.getElementById("send-btn")
+
+btn.onclick = () => this.handleSend(input.value)
+
+input.addEventListener("keydown", (e)=>{
 if(e.key === "Enter"){
-sendMessage()
+this.handleSend(input.value)
 }
 })
 
-micBtn.onclick = toggleVoice
+}
 
-EventBus.on("voiceResult",handleVoiceResult)
+// 🧠 SEND MESSAGE
+handleSend(text){
 
-EventBus.on("aiResponse",addAIMessage)
+if(!text.trim()) return
+
+this.addMessage("user", text)
+Audio.play("typing")
+
+EventBus.emit("userQuestion", text)
+
+// clear input
+document.getElementById("chat-input").value = ""
 
 }
 
-function sendMessage(){
+// 🤖 RECEIVE AI RESPONSE
+addAIResponse(text){
 
-const text = inputField.value.trim()
+Audio.play("response")
 
-if(!text) return
-
-addUserMessage(text)
-
-EventBus.emit("userQuery",text)
-
-inputField.value = ""
-
+this.addMessage("ai", text, true)
 }
 
-function toggleVoice(){
+// 💬 ADD MESSAGE
+addMessage(type, text, animate=false){
 
-EventBus.emit("voiceToggle")
-
-}
-
-function handleVoiceResult(text){
-
-if(!text) return
-
-addUserMessage(text)
-
-EventBus.emit("userQuery",text)
-
-}
-
-function addUserMessage(text){
-
-const msg = createMessage(text,"user")
-
-messagesContainer.appendChild(msg)
-
-scrollToBottom()
-
-}
-
-export function addAIMessage(text){
-
-const msg = createMessage(text,"ai")
-
-messagesContainer.appendChild(msg)
-
-speak(text)
-
-scrollToBottom()
-
-}
-
-function createMessage(text,type){
+const chatWindow = this.container.querySelector(".chat-window")
 
 const msg = document.createElement("div")
+msg.className = "msg " + type
 
-msg.className = `chat-message ${type}`
-
+if(animate){
+this.typeEffect(msg, text)
+}else{
 msg.innerText = text
+}
 
-return msg
+chatWindow.appendChild(msg)
+
+chatWindow.scrollTop = chatWindow.scrollHeight
+}
+
+// ✨ TYPEWRITER EFFECT
+typeEffect(element, text){
+
+let i = 0
+
+const interval = setInterval(()=>{
+element.innerText += text[i]
+i++
+
+if(i >= text.length){
+clearInterval(interval)
+}
+},15)
 
 }
 
-function scrollToBottom(){
+// 🧠 CONNECT AI RESPONSE
+listen(){
 
-messagesContainer.scrollTop = messagesContainer.scrollHeight
-
-}
-
-export function clearChat(){
-
-messagesContainer.innerHTML = ""
+EventBus.on("aiResponse", (data)=>{
+this.addAIResponse(data.text || data)
+})
 
 }
 
-export function openChat(){
-
-chatContainer.style.display = "flex"
-
 }
 
-export function closeChat(){
-
-chatContainer.style.display = "none"
-
-}
+export default new AIChatUI()
