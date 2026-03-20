@@ -1,208 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <title>ScanCraft AI</title>
 
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f172a">
+<!-- 🔥 PWA -->
+<link rel="manifest" href="./manifest.json" />
 
-<link rel="stylesheet" href="style.css">
+<!-- 🎨 Styles -->
+<link rel="stylesheet" href="./style.css" />
 
-<link rel="icon" href="icons/icon-192.png">
+<!-- 🌌 Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet">
 
 </head>
 
 <body>
 
-<div id="app-root">
+<!-- ============================= -->
+<!-- 🔥 MAIN APP -->
+<!-- ============================= -->
 
-<!-- Top Navigation -->
+<div id="app">
 
-<header id="top-bar">
+    <!-- 🎥 CAMERA -->
+    <video id="camera" autoplay playsinline></video>
 
-<div class="logo">
-ScanCraft AI
-</div>
+    <!-- 🧠 SCAN OVERLAY -->
+    <canvas id="overlay"></canvas>
 
-<div class="status-indicators">
+    <!-- ⚡ LOADING -->
+    <div id="loading" class="hidden">
+        <div class="loader"></div>
+        <p>Scanning...</p>
+    </div>
 
-<div id="ai-status">AI Ready</div>
-<div id="network-status">Online</div>
+    <!-- 🎯 OBJECT PANEL -->
+    <div id="object-panel" class="panel hidden">
+        <h2 id="object-name">Object</h2>
+        <p id="object-info">Details will appear here...</p>
+    </div>
 
-</div>
+    <!-- 🎤 VOICE BUBBLE -->
+    <div id="voice-bubble" class="hidden">
+        <span>AI Speaking...</span>
+    </div>
 
-</header>
+    <!-- 🎮 CONTROL BAR -->
+    <div id="controls">
 
+        <button id="scan-btn">SCAN</button>
+        <button id="stop-btn">STOP</button>
 
-<!-- Camera Scan Area -->
-
-<section id="camera-section">
-
-<video id="camera-stream" autoplay playsinline></video>
-
-<canvas id="scan-canvas"></canvas>
-
-<div id="scan-overlay"></div>
-
-<div id="scan-animation">
-<div class="scan-line"></div>
-</div>
-
-<button id="scan-button">
-SCAN
-</button>
-
-</section>
-
-
-<!-- Voice Bubble -->
-
-<div id="voice-bubble">
-
-<div class="voice-wave"></div>
-<div class="voice-wave"></div>
-<div class="voice-wave"></div>
+    </div>
 
 </div>
 
+<!-- ============================= -->
+<!-- 🔊 AUDIO UNLOCK (Mobile Fix) -->
+<!-- ============================= -->
 
-<!-- AI Chat Panel -->
-
-<section id="ai-chat-panel">
-
-<div id="chat-header">
-
-AI Object Assistant
-
+<div id="audio-unlock">
+    <button id="start-audio">Tap to Start</button>
 </div>
 
-<div id="chat-messages"></div>
+<!-- ============================= -->
+<!-- 🚀 APP SCRIPT -->
+<!-- ============================= -->
 
-<div id="chat-input-area">
+<script type="module" src="./app.js"></script>
 
-<input 
-id="chat-input"
-type="text"
-placeholder="Ask anything about the object..."
->
-
-<button id="send-btn">
-Send
-</button>
-
-<button id="voice-btn">
-🎤
-</button>
-
-</div>
-
-</section>
-
-
-<!-- Object Information Panel -->
-
-<section id="object-panel">
-
-<div id="object-title">
-Detected Object
-</div>
-
-<div id="object-images"></div>
-
-<div id="object-info"></div>
-
-<div id="object-actions">
-
-<button id="view-3d-btn">
-View 3D
-</button>
-
-<button id="edit-object-btn">
-Edit Object
-</button>
-
-<button id="buy-object-btn">
-Buy
-</button>
-
-</div>
-
-</section>
-
-
-<!-- 3D Viewer -->
-
-<section id="viewer-section">
-
-<canvas id="viewer-canvas"></canvas>
-
-<div id="viewer-tools">
-
-<button id="paint-tool">
-Paint
-</button>
-
-<button id="texture-tool">
-Texture
-</button>
-
-<button id="sketch-tool">
-Sketch
-</button>
-
-<button id="export-tool">
-Export
-</button>
-
-</div>
-
-</section>
-
-
-<!-- Loading Visuals -->
-
-<div id="loading-screen">
-
-<div class="loader"></div>
-
-<div id="loading-text">
-Initializing AI Engine...
-</div>
-
-</div>
-
-
-<!-- Notification Toast -->
-
-<div id="toast"></div>
-
-
-</div>
-
-
-<!-- Scripts -->
-
-<script type="module" src="app.js"></script>
+<!-- ============================= -->
+<!-- 🔧 SERVICE WORKER REGISTER -->
+<!-- ============================= -->
 
 <script>
-
-if ("serviceWorker" in navigator) {
-
-window.addEventListener("load", () => {
-
-navigator.serviceWorker.register("service-worker.js")
-
-})
-
+if("serviceWorker" in navigator){
+navigator.serviceWorker.register("./service-worker.js")
 }
-
 </script>
-
 
 </body>
 </html>
