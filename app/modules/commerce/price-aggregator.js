@@ -1,133 +1,108 @@
 // modules/commerce/price-aggregator.js
 
 import { EventBus } from "../core/events.js"
-import { logAI } from "../utils/ai-logger.js"
 
-import { searchAmazon } from "./amazon-search.js"
-import { searchFlipkart } from "./flipkart-search.js"
+class PriceAggregator {
 
-let lastResults = []
+constructor(){
+this.platformWeight = {
+Amazon:1,
+Flipkart:1,
+"eBay":0.9,
+AliExpress:0.8,
+Myntra:0.95,
+Meesho:0.85,
+JioMart:0.9,
+Snapdeal:0.8,
+AJIO:0.95,
+Shopify:0.85
+}
+}
 
-export async function aggregatePrices(query){
+// 🔥 MAIN FUNCTION
+aggregate(allResults){
+
+if(!allResults || !allResults.length) return []
+
+EventBus.emit("priceAggregationStart")
 
 try{
 
-EventBus.emit("priceAggregationStart",query)
+// 🧠 flatten all results
+let products = allResults.flat()
 
-const tasks = [
+// 🧠 normalize + score
+products = products.map(p => this.normalize(p))
 
-safeSearch(searchAmazon,query),
-safeSearch(searchFlipkart,query)
+// 🧠 sort by best value
+products.sort((a,b)=> b.finalScore - a.finalScore)
 
-]
+// 🧠 best deal
+const bestDeal = products[0]
 
-const results = await Promise.all(tasks)
+// 🧠 price range
+const range = this.priceRange(products)
 
-const merged = mergeResults(results)
+const result = {
+bestDeal,
+products: products.slice(0,15),
+range
+}
 
-const ranked = rankResults(merged)
+EventBus.emit("priceAggregationComplete", result)
 
-lastResults = ranked
-
-EventBus.emit("priceAggregationComplete",ranked)
-
-logAI("PriceAggregation",ranked)
-
-return ranked
+return result
 
 }catch(err){
 
-console.error("Price aggregation error",err)
-
-EventBus.emit("priceAggregationError",err)
-
-return []
+EventBus.emit("priceAggregationError", err)
+return {products:[]}
 
 }
 
 }
 
+// 🧠 NORMALIZE
+normalize(p){
 
+const numericPrice = this.extractPrice(p.price)
 
-async function safeSearch(fn,query){
+const score =
+(this.platformWeight[p.platform] || 0.7) +
+(parseFloat(p.rating || 3)) +
+(p.confidence || 0.5) -
+(numericPrice / 5000)
 
-try{
-
-const res = await fn(query)
-
-return res || []
-
-}catch(err){
-
-console.warn("Marketplace search failed",fn.name)
-
-return []
-
-}
-
-}
-
-
-
-function mergeResults(results){
-
-let merged = []
-
-results.forEach(list => {
-
-if(Array.isArray(list)){
-merged = merged.concat(list)
-}
-
-})
-
-return merged
-
-}
-
-
-
-function rankResults(products){
-
-if(!products.length) return []
-
-return products
-.map(p => ({
+return {
 ...p,
-score: computeScore(p)
-}))
-.sort((a,b) => b.score - a.score)
+numericPrice,
+finalScore: score
+}
 
 }
 
+// 💰 PRICE PARSER
+extractPrice(price){
 
+if(!price) return 1000
 
-function computeScore(product){
-
-let score = 0
-
-if(product.price) score += 40
-if(product.rating) score += product.rating * 10
-if(product.reviews) score += Math.log(product.reviews + 1) * 5
-if(product.brandMatch) score += 20
-if(product.image) score += 10
-
-return score
+const num = price.toString().replace(/[^\d.]/g,"")
+return parseFloat(num) || 1000
 
 }
 
+// 📊 PRICE RANGE
+priceRange(products){
 
+const prices = products.map(p=>p.numericPrice)
 
-export function getBestDeal(){
-
-if(!lastResults.length) return null
-
-return lastResults[0]
+return {
+min: Math.min(...prices),
+max: Math.max(...prices)
+}
 
 }
 
-
-
-export function getLastPriceResults(){
-return lastResults
 }
+
+export default new PriceAggregator()
