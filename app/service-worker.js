@@ -1,37 +1,27 @@
 // ==============================
-// 💀 ScanCraft AI - Service Worker (FINAL)
+// 💀 ScanCraft AI - Service Worker (ULTRA FINAL)
 // ==============================
 
-const CACHE_VERSION = "v2"
-const CACHE_NAME = "scancraft-" + CACHE_VERSION
+const CACHE_VERSION = "v3"
+const STATIC_CACHE = "static-" + CACHE_VERSION
+const DYNAMIC_CACHE = "dynamic-" + CACHE_VERSION
 
-// 🔥 static assets
+// ==============================
+// 🔥 STATIC ASSETS
+// ==============================
+
 const STATIC_ASSETS = [
 
 "/",
 "/index.html",
 "/style.css",
 "/app.js",
+"/manifest.json",
 
-// 🎧 sounds
-"/sounds/ai/typing.mp3",
-"/sounds/ai/thinking.mp3",
-"/sounds/ai/response.mp3",
-"/sounds/ai/listening.mp3",
-
-"/sounds/ui/click.mp3",
-"/sounds/ui/hover.mp3",
-"/sounds/ui/open-panel.mp3",
-
-"/sounds/scan/detect.mp3",
+// 🎧 sounds (safe load)
 "/sounds/scan/scan-start.mp3",
 "/sounds/scan/scan-complete.mp3",
-
-"/sounds/editor/brush.mp3",
-"/sounds/editor/paint.mp3",
-"/sounds/editor/texture.mp3",
-
-"/sounds/ambience/background.mp3"
+"/sounds/ui/click.mp3"
 
 ]
 
@@ -45,14 +35,13 @@ console.log("🔥 SW Installing...")
 
 event.waitUntil(
 
-caches.open(CACHE_NAME)
+caches.open(STATIC_CACHE)
 .then(cache=>{
 return cache.addAll(STATIC_ASSETS)
 })
 
 )
 
-// ⚡ activate immediately
 self.skipWaiting()
 
 })
@@ -68,87 +57,73 @@ console.log("⚡ SW Activated")
 event.waitUntil(
 
 caches.keys().then(keys=>{
-
 return Promise.all(
-
 keys.map(key=>{
-if(key !== CACHE_NAME){
+if(key !== STATIC_CACHE && key !== DYNAMIC_CACHE){
 console.log("🗑 Removing old cache:", key)
 return caches.delete(key)
 }
 })
-
 )
-
 })
 
 )
 
-// 🔥 take control immediately
 self.clients.claim()
 
 })
 
 // ==============================
-// 📡 FETCH (SMART STRATEGY)
+// 📡 FETCH STRATEGY
 // ==============================
 
 self.addEventListener("fetch", (event)=>{
 
 const req = event.request
 
-// 🔥 skip non-GET
 if(req.method !== "GET") return
+
+// ==============================
+// 🔥 STATIC FILES → CACHE FIRST
+// ==============================
+
+if(
+req.url.includes(".css") ||
+req.url.includes(".js") ||
+req.url.includes(".mp3") ||
+req.url.includes(".json")
+){
 
 event.respondWith(
 
 caches.match(req).then(cached=>{
+return cached || fetch(req)
+})
 
-// ==============================
-// ⚡ CACHE FIRST (STATIC FILES)
-// ==============================
+)
 
-if(cached){
-return cached
+return
 }
 
 // ==============================
-// 🌐 NETWORK FIRST (DYNAMIC)
+// 🌐 HTML → NETWORK FIRST
 // ==============================
 
-return fetch(req)
+event.respondWith(
+
+fetch(req)
 .then(networkRes=>{
 
-// ⚠️ skip invalid responses
-if(!networkRes || networkRes.status !== 200){
-return networkRes
-}
-
-// 💾 dynamic caching
-return caches.open(CACHE_NAME).then(cache=>{
-
+return caches.open(DYNAMIC_CACHE).then(cache=>{
 cache.put(req, networkRes.clone())
-
 return networkRes
-
 })
 
 })
 .catch(()=>{
 
-// ==============================
-// ❌ OFFLINE FALLBACK
-// ==============================
-
-if(req.destination === "document"){
-return caches.match("/index.html")
-}
-
-// fallback text
-return new Response("⚠️ Offline Mode", {
-headers:{ "Content-Type":"text/plain" }
-})
-
+return caches.match(req).then(cached=>{
+return cached || caches.match("/index.html")
 })
 
 })
