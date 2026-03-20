@@ -1,161 +1,82 @@
 // modules/ai/context.js
 
 import { EventBus } from "../core/events.js"
-import { cacheKnowledge } from "../memory/cache-manager.js"
-import { logAI } from "../utils/ai-logger.js"
 
-let context = {
+class ContextEngine {
 
-activeObject: null,
-
-brand: null,
-
-materials: [],
-
-history: null,
-
-scene: null,
-
-conversation: [],
-
-lastUpdated: null
-
+constructor(){
+this.currentContext = {}
+this.history = []
+this.scene = null
+this.userIntent = null
 }
 
+// 🔥 MAIN BUILDER
+buildContext({ detection, reasoning, scene, memory, userInput }){
 
-
-export function initContext(){
-
-EventBus.on("objectBrainComplete",updateContext)
-
-EventBus.emit("aiContextReady")
-
+const context = {
+object: detection?.label || "unknown",
+confidence: detection?.score || 0,
+category: reasoning?.category || "unknown",
+material: reasoning?.material || "unknown",
+scene: scene || this.scene || "unknown",
+similar: reasoning?.similar || [],
+history: this.getRecentHistory(),
+intent: this.extractIntent(userInput),
+timestamp: Date.now()
 }
 
+// store
+this.currentContext = context
+this.history.push(context)
 
-
-export function updateContext(payload){
-
-try{
-
-if(!payload) return
-
-context.activeObject = payload.object || null
-
-context.brand = payload.brand || null
-
-context.materials = payload.materials || []
-
-context.history = payload.history || null
-
-context.lastUpdated = Date.now()
-
-cacheKnowledge("context",context)
-
-logAI("ContextUpdate",context)
-
-EventBus.emit("contextUpdated",context)
-
-}catch(err){
-
-console.error("Context update error",err)
-
+if(this.history.length > 50){
+this.history.shift()
 }
 
-}
-
-
-
-export function updateSceneContext(sceneData){
-
-context.scene = sceneData
-
-context.lastUpdated = Date.now()
-
-EventBus.emit("sceneContextUpdated",sceneData)
-
-}
-
-
-
-export function addConversation(role,message){
-
-context.conversation.push({
-
-role,
-
-message,
-
-time: Date.now()
-
-})
-
-if(context.conversation.length > 20){
-
-context.conversation.shift()
-
-}
-
-EventBus.emit("conversationUpdated",context.conversation)
-
-}
-
-
-
-export function getContext(){
+EventBus.emit("contextUpdated", context)
 
 return context
+}
+
+// 🧠 USER INTENT DETECTION
+extractIntent(text){
+
+if(!text) return "observe"
+
+text = text.toLowerCase()
+
+if(text.includes("price")) return "commerce"
+if(text.includes("buy")) return "commerce"
+if(text.includes("how")) return "explanation"
+if(text.includes("make") || text.includes("build")) return "diy"
+if(text.includes("future")) return "future"
+if(text.includes("inside")) return "xray"
+
+return "general"
+}
+
+// 📊 HISTORY (short-term memory)
+getRecentHistory(){
+
+return this.history.slice(-5)
+}
+
+// 🌍 SCENE UPDATE
+updateScene(sceneData){
+this.scene = sceneData
+}
+
+// 🎯 INTENT UPDATE (voice/chat)
+updateIntent(intent){
+this.userIntent = intent
+}
+
+// 🔄 CONTEXT GETTER
+getContext(){
+return this.currentContext
+}
 
 }
 
-
-
-export function getActiveObject(){
-
-return context.activeObject
-
-}
-
-
-
-export function getConversationHistory(){
-
-return context.conversation
-
-}
-
-
-
-export function clearConversation(){
-
-context.conversation = []
-
-EventBus.emit("conversationCleared")
-
-}
-
-
-
-export function resetContext(){
-
-context = {
-
-activeObject:null,
-
-brand:null,
-
-materials:[],
-
-history:null,
-
-scene:null,
-
-conversation:[],
-
-lastUpdated:null
-
-}
-
-EventBus.emit("contextReset")
-
-}
+export default new ContextEngine()
