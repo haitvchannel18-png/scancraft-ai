@@ -1,72 +1,94 @@
+// app/service-worker.js
 
-const CACHE_NAME = "scancraft-ai-v1";
+const CACHE_NAME = "scancraft-v1"
 
+// 🔥 important files
 const ASSETS = [
 
-"./",
-"./index.html",
-"./style.css",
-"./app.js",
+"/",
+"/index.html",
+"/style.css",
+"/app.js",
 
-"./icons/icon-192.png",
-"./icons/icon-512.png"
+// sounds
+"/sounds/ai/typing.mp3",
+"/sounds/ai/thinking.mp3",
+"/sounds/ai/response.mp3",
+"/sounds/ai/listening.mp3",
 
-];
+"/sounds/ui/click.mp3",
+"/sounds/ui/hover.mp3",
+"/sounds/ui/open-panel.mp3",
 
+"/sounds/scan/detect.mp3",
+"/sounds/scan/scan-start.mp3",
+"/sounds/scan/scan-complete.mp3",
 
-/* INSTALL */
+"/sounds/editor/brush.mp3",
+"/sounds/editor/paint.mp3",
+"/sounds/editor/texture.mp3",
 
-self.addEventListener("install", event => {
+"/sounds/ambience/background.mp3"
+]
 
-event.waitUntil(
+// =============================
+// 🔥 INSTALL
+// =============================
+
+self.addEventListener("install", (e)=>{
+
+e.waitUntil(
 
 caches.open(CACHE_NAME)
-.then(cache => {
+.then(cache=>cache.addAll(ASSETS))
 
-return cache.addAll(ASSETS);
+)
 
 })
 
-);
+// =============================
+// 🔥 FETCH (CACHE FIRST)
+// =============================
 
-});
+self.addEventListener("fetch", (e)=>{
 
+e.respondWith(
 
-/* ACTIVATE */
+caches.match(e.request)
+.then(res=>{
 
-self.addEventListener("activate", event => {
+return res || fetch(e.request)
+.then(networkRes=>{
 
-event.waitUntil(
+// cache dynamic files
+return caches.open(CACHE_NAME).then(cache=>{
+cache.put(e.request, networkRes.clone())
+return networkRes
+})
 
-caches.keys().then(keys => {
+})
 
+})
+
+)
+
+})
+
+// =============================
+// 🔥 UPDATE
+// =============================
+
+self.addEventListener("activate",(e)=>{
+
+e.waitUntil(
+
+caches.keys().then(keys=>{
 return Promise.all(
-
-keys.filter(k => k !== CACHE_NAME)
-.map(k => caches.delete(k))
-
-);
-
+keys.filter(k=>k!==CACHE_NAME)
+.map(k=>caches.delete(k))
+)
 })
 
-);
-
-});
-
-
-/* FETCH */
-
-self.addEventListener("fetch", event => {
-
-event.respondWith(
-
-caches.match(event.request)
-.then(res => {
-
-return res || fetch(event.request);
+)
 
 })
-
-);
-
-});
