@@ -8,10 +8,10 @@
 <title>ScanCraft AI 💀</title>
 
 <!-- 🔥 PWA -->
-<link rel="manifest" href="./manifest.json" />
+<link rel="manifest" href="/manifest.json" />
 
-<!-- 🎨 CSS -->
-<link rel="stylesheet" href="./style.css" />
+<!-- 🎨 CSS (FIXED PATH) -->
+<link rel="stylesheet" href="/style.css" />
 
 <!-- 🌌 FONT -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet">
@@ -57,7 +57,7 @@
         🚀 Go Pro
     </button>
 
-    <!-- 📢 BANNER AD PLACEHOLDER -->
+    <!-- 📢 BANNER AD -->
     <div id="ad-banner">
         <p>Ad Loading...</p>
     </div>
@@ -76,44 +76,36 @@
     <button id="start-audio">Start Experience</button>
 </div>
 
-<!-- 🚀 MAIN SCRIPT -->
-<script type="module" src="./app.js"></script>
+<!-- 🚀 MAIN SCRIPT (FIXED PATH) -->
+<script type="module" src="/app.js"></script>
 
-<!-- 💀 UI LOGIC (PRO + ADS CONTROL) -->
+<!-- 💀 UI LOGIC -->
 <script type="module">
 
-import User from "./modules/auth/user.js"
-import AdsController from "./modules/ads/ads-controller.js"
+import User from "/modules/auth/user.js"
 
 const proBadge = document.getElementById("pro-badge")
 const proBtn = document.getElementById("pro-btn")
 const adBanner = document.getElementById("ad-banner")
 
-// 👤 check user
 const user = User.get()
 
 if(user?.isPro){
-
-// 💎 PRO USER UI
-proBadge.classList.remove("hidden")
-proBtn.style.display = "none"
-adBanner.style.display = "none"
-
+    proBadge.classList.remove("hidden")
+    proBtn.style.display = "none"
+    adBanner.style.display = "none"
 }else{
-
-// 💰 FREE USER UI
-proBadge.classList.add("hidden")
-proBtn.style.display = "block"
-adBanner.style.display = "block"
-
+    proBadge.classList.add("hidden")
+    proBtn.style.display = "block"
+    adBanner.style.display = "block"
 }
 
 </script>
 
-<!-- 🔧 SERVICE WORKER -->
+<!-- 🔧 SERVICE WORKER (FIXED PATH) -->
 <script>
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js")
+    navigator.serviceWorker.register("/service-worker.js")
 }
 </script>
 
