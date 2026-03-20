@@ -1,96 +1,114 @@
-// ================= IMPORTS =================
+// modules/audio/ui-sounds.js
 
-import { playSound, loadSound } from "./audio-engine.js"
-import { logAI } from "../utils/AILogger.js"
+import SoundManager from "./sound-manager.js"
+import AudioEngine from "./audio-engine.js"
+import CONFIG from "../utils/config.js"
 
+class UISounds {
 
-// ================= SOUND MAP =================
+constructor(){
+this.enabled = CONFIG.UI.sound
+this.cooldown = {}
+}
 
-const UI_SOUNDS = {
+// ⚡ anti-spam system
+canPlay(key, delay=100){
+const now = Date.now()
 
-click: "/sounds/ui/click.mp3",
+if(!this.cooldown[key] || now - this.cooldown[key] > delay){
+this.cooldown[key] = now
+return true
+}
 
-hover: "/sounds/ui/hover.mp3",
+return false
+}
 
-panelOpen: "/sounds/ui/open-panel.mp3",
+// 🔘 click
+click(){
 
-panelClose: "/sounds/ui/close-panel.mp3",
+if(!this.enabled || !this.canPlay("click",80)) return
 
-menuMove: "/sounds/ui/menu-move.mp3"
+SoundManager.play("click",0.5)
 
 }
 
+// 🖱 hover
+hover(){
 
-// ================= INIT =================
+if(!this.enabled || !this.canPlay("hover",120)) return
 
-export async function initUISounds(){
+SoundManager.play("hover",0.25)
 
-logAI("Initializing UI sounds")
+}
 
-for(const key in UI_SOUNDS){
+// 📂 panel open (premium feel)
+openPanel(){
 
-await loadSound(key, UI_SOUNDS[key])
+if(!this.enabled) return
 
+SoundManager.play("open_panel",0.6)
+
+// subtle spatial echo
+AudioEngine.playSpatial("/sounds/ui/open-panel.mp3",0,0,2)
+
+}
+
+// ❌ panel close
+closePanel(){
+
+if(!this.enabled) return
+
+SoundManager.play("click",0.3)
+
+}
+
+// ⚠️ error feedback
+error(){
+
+if(!this.enabled) return
+
+SoundManager.play("click",0.2)
+
+// deeper spatial tone
+AudioEngine.playSpatial("/sounds/ui/click.mp3",-1,0,2)
+
+}
+
+// ✅ success feedback
+success(){
+
+if(!this.enabled) return
+
+SoundManager.play("hover",0.4)
+
+// right side spatial positive tone
+AudioEngine.playSpatial("/sounds/ui/hover.mp3",1,0,2)
+
+}
+
+// 🔄 loading tick
+loading(){
+
+if(!this.enabled || !this.canPlay("loading",200)) return
+
+SoundManager.play("hover",0.15)
+
+}
+
+// 🎯 focus (important UI element)
+focus(){
+
+if(!this.enabled) return
+
+AudioEngine.playSpatial("/sounds/ui/hover.mp3",0,0,1)
+
+}
+
+// 🔊 toggle sound
+toggle(state){
+this.enabled = state
 }
 
 }
 
-
-// ================= BUTTON CLICK =================
-
-export function playClick(){
-
-playSound("click",0.6)
-
-}
-
-
-// ================= HOVER =================
-
-export function playHover(){
-
-playSound("hover",0.3)
-
-}
-
-
-// ================= PANEL OPEN =================
-
-export function playPanelOpen(){
-
-playSound("panelOpen",0.7)
-
-}
-
-
-// ================= PANEL CLOSE =================
-
-export function playPanelClose(){
-
-playSound("panelClose",0.7)
-
-}
-
-
-// ================= MENU MOVE =================
-
-export function playMenuMove(){
-
-playSound("menuMove",0.4)
-
-}
-
-
-// ================= AUTO ATTACH =================
-
-export function attachUISounds(){
-
-document.querySelectorAll("button").forEach(btn=>{
-
-btn.addEventListener("click",playClick)
-
-btn.addEventListener("mouseenter",playHover)
-
-})
-
-}
+export default new UISounds()
