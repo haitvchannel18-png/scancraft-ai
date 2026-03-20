@@ -2,170 +2,125 @@
 
 import { EventBus } from "../core/events.js"
 
-let animations = new Map()
+class AnimationEngine {
 
-export function initAnimationEngine(){
+constructor(){
+this.animations = new Map()
+this.initGlobalStyles()
+}
 
-attachEvents()
+// 🔥 INIT GLOBAL CSS (dynamic)
+initGlobalStyles(){
+
+const style = document.createElement("style")
+style.innerHTML = `
+.fade-in { animation: fadeIn 0.4s ease forwards; }
+.fade-out { animation: fadeOut 0.3s ease forwards; }
+.scale-in { animation: scaleIn 0.35s ease forwards; }
+.slide-up { animation: slideUp 0.4s ease forwards; }
+.glow { animation: glowPulse 1.2s infinite; }
+
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes fadeOut { from{opacity:1} to{opacity:0} }
+@keyframes scaleIn { from{transform:scale(0.9);opacity:0} to{transform:scale(1);opacity:1} }
+@keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+@keyframes glowPulse {
+0%{box-shadow:0 0 5px rgba(0,255,255,0.3)}
+50%{box-shadow:0 0 20px rgba(0,255,255,0.8)}
+100%{box-shadow:0 0 5px rgba(0,255,255,0.3)}
+}
+`
+document.head.appendChild(style)
 
 }
 
-function attachEvents(){
-
-EventBus.on("panelOpen",fadeIn)
-
-EventBus.on("panelClose",fadeOut)
-
-EventBus.on("aiThinking",pulseElement)
-
-EventBus.on("scanStart",scanFlash)
-
-}
-
-export function fadeIn(element){
+// 🎯 APPLY ANIMATION
+apply(element, type){
 
 if(!element) return
 
-element.style.opacity = 0
-element.style.display = "block"
-
-let opacity = 0
-
-const step = ()=>{
-
-opacity += 0.05
-
-element.style.opacity = opacity
-
-if(opacity < 1){
-
-requestAnimationFrame(step)
-
-}
-
-}
-
-requestAnimationFrame(step)
-
-}
-
-export function fadeOut(element){
-
-if(!element) return
-
-let opacity = 1
-
-const step = ()=>{
-
-opacity -= 0.05
-
-element.style.opacity = opacity
-
-if(opacity > 0){
-
-requestAnimationFrame(step)
-
-}else{
-
-element.style.display = "none"
-
-}
-
-}
-
-requestAnimationFrame(step)
-
-}
-
-export function slideUp(element){
-
-if(!element) return
-
-element.style.transform = "translateY(40px)"
-element.style.opacity = 0
-element.style.display = "block"
-
-let y = 40
-let opacity = 0
-
-const step = ()=>{
-
-y -= 2
-opacity += 0.05
-
-element.style.transform = `translateY(${y}px)`
-element.style.opacity = opacity
-
-if(opacity < 1){
-
-requestAnimationFrame(step)
-
-}
-
-}
-
-requestAnimationFrame(step)
-
-}
-
-export function pulseElement(){
-
-const loader = document.querySelector(".ai-spinner")
-
-if(!loader) return
-
-loader.classList.add("pulse")
+element.classList.add(type)
 
 setTimeout(()=>{
-
-loader.classList.remove("pulse")
-
-},1200)
+element.classList.remove(type)
+},500)
 
 }
 
-export function scanFlash(){
+// ✨ ADVANCED SEQUENCE
+sequence(elements, type, delay=100){
 
-const overlay = document.querySelector(".scan-overlay-canvas")
-
-if(!overlay) return
-
-overlay.classList.add("scan-flash")
-
+elements.forEach((el, i)=>{
 setTimeout(()=>{
-
-overlay.classList.remove("scan-flash")
-
-},300)
+this.apply(el, type)
+}, i * delay)
+})
 
 }
 
-export function animateScale(element){
+// 🔥 SCAN EFFECT
+scanPulse(element){
 
 if(!element) return
 
-element.style.transform = "scale(0.8)"
-element.style.opacity = 0
+element.classList.add("glow")
 
-let scale = 0.8
-let opacity = 0
+setTimeout(()=>{
+element.classList.remove("glow")
+},2000)
 
-const step = ()=>{
+}
 
-scale += 0.02
-opacity += 0.05
+// 🎬 LOADING LOOP
+loadingDots(element){
 
-element.style.transform = `scale(${scale})`
-element.style.opacity = opacity
+let dots = 0
 
-if(opacity < 1){
+const interval = setInterval(()=>{
+dots = (dots + 1) % 4
+element.innerText = "Processing" + ".".repeat(dots)
+},400)
 
-requestAnimationFrame(step)
+return () => clearInterval(interval)
+}
+
+// 💥 RIPPLE EFFECT
+ripple(element, x, y){
+
+const ripple = document.createElement("span")
+ripple.className = "ripple"
+
+ripple.style.left = x + "px"
+ripple.style.top = y + "px"
+
+element.appendChild(ripple)
+
+setTimeout(()=>{
+ripple.remove()
+},600)
+
+}
+
+// 🎯 AUTO HOOK EVENTS
+initListeners(){
+
+EventBus.on("scanStart", ()=>{
+const el = document.getElementById("scan-area")
+this.scanPulse(el)
+})
+
+EventBus.on("cardOpen", (el)=>{
+this.apply(el, "scale-in")
+})
+
+EventBus.on("aiResponse", ()=>{
+const chat = document.getElementById("ai-chat")
+this.apply(chat, "fade-in")
+})
 
 }
 
 }
 
-requestAnimationFrame(step)
-
-}
+export default new AnimationEngine()
