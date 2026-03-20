@@ -1,146 +1,161 @@
-import { initPipeline, processFrame } from "./modules/core/pipeline.js"
-import { startCamera } from "./modules/camera/camera.js"
+// app/app.js
+
+import CONFIG from "./modules/utils/config.js"
 import { EventBus } from "./modules/core/events.js"
 
-import { AudioEngine } from "./modules/audio/audio-engine.js"
-import { speak } from "./modules/voice/narration.js"
+// 🎥 Camera
+import Camera from "./modules/camera/camera.js"
 
-import { showDetection } from "./modules/ui/scan-overlay.js"
-import { renderObjectPanel } from "./modules/ui/object-panel.js"
-import { pushAIMessage } from "./modules/ui/ai-chat-ui.js"
+// 🧠 Detection
+import Detector from "./modules/detection/detector.js"
 
+// 🤖 AI Brain
+import ReasoningEngine from "./modules/ai/reasoning-engine.js"
+import VisionAI from "./modules/ai/vision-ai.js"
 
-const video = document.getElementById("camera-stream")
-const canvas = document.getElementById("scan-canvas")
+// 🔊 Sound
+import SoundLoader from "./modules/audio/sound-loader.js"
+import SoundManager from "./modules/audio/sound-manager.js"
+import UISounds from "./modules/audio/ui-sounds.js"
 
-const scanBtn = document.getElementById("scan-button")
-const chatInput = document.getElementById("chat-input")
-const sendBtn = document.getElementById("send-btn")
-const voiceBtn = document.getElementById("voice-btn")
+// 🎤 Voice
+import AutoVoice from "./modules/audio/auto-voice.js"
 
+// 🎨 UI
+import ScanOverlay from "./modules/ui/scan-overlay.js"
+import ObjectPanel from "./modules/ui/object-panel.js"
+import LoadingUI from "./modules/ui/loading-visuals.js"
 
-let running = false
+// ⚡ Performance
+import PerformanceMonitor from "./modules/core/performance-monitor.js"
 
+// =============================
+// 🚀 APP ENGINE
+// =============================
 
-async function bootApp(){
+class ScanCraftApp {
 
-console.log("Initializing ScanCraft AI")
+constructor(){
+this.video = null
+this.isRunning = false
+}
 
-await AudioEngine.init()
+// 🔥 INIT APP
+async init(){
 
-await initPipeline()
+console.log("🚀 ScanCraft AI Starting...")
 
-await startCamera(video)
+// UI Elements
+this.video = document.getElementById("camera")
 
-startFrameLoop()
+// 🎧 Load Sounds
+SoundLoader.init()
+
+// 🔊 Background ambience
+SoundManager.loop("background",0.15)
+
+// 🎤 Voice Auto
+AutoVoice.init()
+
+// ⚡ Performance monitor
+PerformanceMonitor.start()
+
+// 🎥 Camera init
+await Camera.init(this.video)
+
+// 🎯 Start pipeline
+this.startPipeline()
 
 }
 
+// =============================
+// 🔥 MAIN PIPELINE
+// =============================
 
-function startFrameLoop(){
+startPipeline(){
 
-const ctx = canvas.getContext("2d")
+if(this.isRunning) return
 
-async function loop(){
+this.isRunning = true
 
-if(!running){
+Camera.startStreaming(async (frame)=>{
 
-requestAnimationFrame(loop)
+try{
+
+// ⚡ loading animation
+LoadingUI.show()
+
+// 🔍 detection
+const detections = await Detector.detect(frame)
+
+if(!detections || detections.length === 0){
+LoadingUI.hide()
 return
-
 }
 
-ctx.drawImage(video,0,0,canvas.width,canvas.height)
+// 🎯 best object
+const object = detections[0]
 
-const result = await processFrame(canvas)
+// 🧠 vision AI
+const visionData = await VisionAI.process(object)
 
-if(result){
+// 🧠 reasoning
+const reasoning = await ReasoningEngine({
+label: object.label,
+similarObjects: visionData.similar || []
+})
 
-showDetection(result)
+// 🎨 UI update
+ScanOverlay.draw(object)
+ObjectPanel.show(reasoning)
 
-EventBus.emit("objectDetected",result)
+// 🔊 scan complete sound
+UISounds.success()
 
+// 📡 emit event (voice trigger)
+EventBus.emit("resultReady",{
+summary: `${reasoning.object} detected`,
+data: reasoning
+})
+
+// ⚡ performance log
+PerformanceMonitor.mark("frameProcessed")
+
+}catch(e){
+console.error(e)
+UISounds.error()
 }
 
-requestAnimationFrame(loop)
-
-}
-
-requestAnimationFrame(loop)
-
-}
-
-
-
-scanBtn.addEventListener("click",()=>{
-
-running = !running
-
-if(running){
-
-AudioEngine.play("scan-start")
-
-scanBtn.innerText="STOP"
-
-}else{
-
-scanBtn.innerText="SCAN"
-
+finally{
+LoadingUI.hide()
 }
 
 })
 
+}
 
+// =============================
+// 🛑 STOP
+// =============================
 
-EventBus.on("objectDetected",async data=>{
+stop(){
 
-AudioEngine.play("detect")
-
-renderObjectPanel(data)
-
-const text = `Detected ${data.label}`
-
-pushAIMessage("ai",text)
-
-await speak(text)
-
-})
-
-
-
-sendBtn.addEventListener("click",handleChat)
-
-chatInput.addEventListener("keypress",e=>{
-
-if(e.key==="Enter") handleChat()
-
-})
-
-
-async function handleChat(){
-
-const text = chatInput.value
-
-if(!text) return
-
-pushAIMessage("user",text)
-
-chatInput.value=""
-
-AudioEngine.play("typing")
-
-EventBus.emit("userQuery",text)
+Camera.stopStreaming()
+this.isRunning = false
 
 }
 
+}
 
+// =============================
+// 🚀 BOOTSTRAP
+// =============================
 
-voiceBtn.addEventListener("click",()=>{
+const app = new ScanCraftApp()
 
-EventBus.emit("voiceInput")
-
+window.addEventListener("load", ()=>{
+app.init()
 })
 
-
-
-window.addEventListener("load",bootApp)
+// optional debug
+window.app = app
