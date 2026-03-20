@@ -1,150 +1,108 @@
 // modules/ui/voice-bubble.js
 
 import { EventBus } from "../core/events.js"
+import Animation from "./animation-engine.js"
 
-let bubble
-let canvas
-let ctx
-let animationId
-let bars = []
-let active = false
+class VoiceBubble {
 
-const BAR_COUNT = 24
-const MAX_HEIGHT = 40
+constructor(){
+this.container = document.getElementById("voice-bubble")
+this.animating = false
+}
 
-export function initVoiceBubble(containerId = "voice-bubble-container"){
+// 🔥 INIT
+init(){
 
-const container = document.getElementById(containerId)
+if(!this.container) return
 
-bubble = document.createElement("div")
-bubble.className = "voice-bubble"
+this.container.innerHTML = `
+<div class="voice-core">
+<div class="wave"></div>
+<div class="wave"></div>
+<div class="wave"></div>
+</div>
+`
 
-canvas = document.createElement("canvas")
-canvas.width = 220
-canvas.height = 80
-
-ctx = canvas.getContext("2d")
-
-bubble.appendChild(canvas)
-container.appendChild(bubble)
-
-createBars()
-
-attachEvents()
+this.hide()
+this.initListeners()
 
 }
 
-function createBars(){
+// 🎤 SHOW
+show(){
 
-bars = []
+if(!this.container) return
 
-for(let i=0;i<BAR_COUNT;i++){
+this.container.style.display = "flex"
 
-bars.push({
-height: Math.random()*10,
-speed: 0.2 + Math.random()*0.8
+Animation.apply(this.container, "fade-in")
+
+this.startAnimation()
+
+}
+
+// ❌ HIDE
+hide(){
+
+if(!this.container) return
+
+this.container.style.display = "none"
+
+this.stopAnimation()
+
+}
+
+// 🌊 START ANIMATION
+startAnimation(){
+
+if(this.animating) return
+
+this.animating = true
+
+const waves = this.container.querySelectorAll(".wave")
+
+waves.forEach((wave, i)=>{
+
+wave.style.animation = `voiceWave 1s infinite ease-in-out ${i * 0.2}s`
+
+})
+
+}
+
+// ⛔ STOP ANIMATION
+stopAnimation(){
+
+this.animating = false
+
+const waves = this.container.querySelectorAll(".wave")
+
+waves.forEach(w=>{
+w.style.animation = "none"
+})
+
+}
+
+// 🎯 LISTEN EVENTS
+initListeners(){
+
+EventBus.on("voiceStart", ()=>{
+this.show()
+})
+
+EventBus.on("voiceEnd", ()=>{
+this.hide()
+})
+
+EventBus.on("aiSpeaking", ()=>{
+this.show()
+})
+
+EventBus.on("aiSilent", ()=>{
+this.hide()
 })
 
 }
 
 }
 
-function attachEvents(){
-
-EventBus.on("voiceStart",startAnimation)
-
-EventBus.on("voiceEnd",stopAnimation)
-
-EventBus.on("voiceStopped",stopAnimation)
-
-}
-
-function startAnimation(){
-
-active = true
-
-bubble.classList.add("active")
-
-animate()
-
-}
-
-function stopAnimation(){
-
-active = false
-
-bubble.classList.remove("active")
-
-cancelAnimationFrame(animationId)
-
-drawIdle()
-
-}
-
-function animate(){
-
-animationId = requestAnimationFrame(animate)
-
-ctx.clearRect(0,0,canvas.width,canvas.height)
-
-const centerY = canvas.height/2
-const barWidth = canvas.width / BAR_COUNT
-
-bars.forEach((bar,i)=>{
-
-bar.height += (Math.random()-0.5)*bar.speed*10
-
-bar.height = Math.max(4,Math.min(MAX_HEIGHT,bar.height))
-
-const x = i * barWidth
-
-drawBar(x,centerY,barWidth-2,bar.height)
-
-})
-
-}
-
-function drawBar(x,centerY,width,height){
-
-ctx.beginPath()
-
-ctx.fillStyle = "rgba(0,180,255,0.9)"
-
-ctx.roundRect(
-x,
-centerY - height/2,
-width,
-height,
-4
-)
-
-ctx.fill()
-
-}
-
-function drawIdle(){
-
-ctx.clearRect(0,0,canvas.width,canvas.height)
-
-const centerY = canvas.height/2
-const barWidth = canvas.width / BAR_COUNT
-
-for(let i=0;i<BAR_COUNT;i++){
-
-drawBar(i*barWidth,centerY,barWidth-2,6)
-
-}
-
-}
-
-export function destroyVoiceBubble(){
-
-cancelAnimationFrame(animationId)
-
-if(bubble && bubble.parentNode){
-
-bubble.parentNode.removeChild(bubble)
-
-}
-
-}
+export default new VoiceBubble()
