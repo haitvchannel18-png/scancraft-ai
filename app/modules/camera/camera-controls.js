@@ -1,198 +1,181 @@
-// ================= IMPORT =================
+/**
+ * ScanCraft AI
+ * Camera Controls (Zoom + Focus + Gestures)
+ */
 
-import { emit } from "../core/events.js"
+import Camera from "./camera.js"
+import Events from "../core/events.js"
 
+class CameraControls {
 
-// ================= CAMERA STATE =================
+constructor(){
 
-let currentStream = null
-let currentTrack = null
+this.video = null
 
-let videoElement = null
+this.zoomLevel = 1
+this.minZoom = 1
+this.maxZoom = 5
 
-let zoomLevel = 1
+this.lastTouchDistance = null
 
+}
 
-// ================= INIT CAMERA =================
+init(videoElement){
 
-export async function initCamera(video){
+this.video = videoElement
 
-videoElement = video
+this.enableTapFocus()
+this.enablePinchZoom()
 
-const constraints = {
+}
 
-audio:false,
+getTrack(){
 
-video:{
-facingMode:"environment",
-width:{ideal:1920},
-height:{ideal:1080},
-focusMode:"continuous",
-exposureMode:"continuous",
-whiteBalanceMode:"continuous"
+return Camera.stream?.getVideoTracks()[0]
+
+}
+
+applyConstraints(constraints){
+
+const track = this.getTrack()
+
+if(track){
+
+track.applyConstraints(constraints).catch(err=>{
+console.warn("Constraint failed:", err)
+})
+
 }
 
 }
 
-currentStream = await navigator.mediaDevices.getUserMedia(constraints)
+setZoom(zoom){
 
-video.srcObject = currentStream
+this.zoomLevel = Math.max(this.minZoom, Math.min(this.maxZoom, zoom))
 
-currentTrack = currentStream.getVideoTracks()[0]
+this.applyConstraints({
+advanced:[{ zoom: this.zoomLevel }]
+})
 
-emit("camera:started")
-
-}
-
-
-// ================= STOP CAMERA =================
-
-export function stopCamera(){
-
-if(!currentStream) return
-
-currentStream.getTracks().forEach(track=>track.stop())
-
-emit("camera:stopped")
+Events.emit("camera:zoom", this.zoomLevel)
 
 }
 
+zoomIn(){
 
-// ================= SWITCH CAMERA =================
+this.setZoom(this.zoomLevel + 0.2)
 
-export async function switchCamera(){
+}
 
-if(!videoElement) return
+zoomOut(){
 
-stopCamera()
+this.setZoom(this.zoomLevel - 0.2)
 
-const constraints = {
+}
 
-video:{
-facingMode:"user",
-width:{ideal:1280},
-height:{ideal:720}
+enablePinchZoom(){
+
+this.video.addEventListener("touchmove", (e)=>{
+
+if(e.touches.length === 2){
+
+const dist = this.getDistance(e.touches[0], e.touches[1])
+
+if(this.lastTouchDistance){
+
+const diff = dist - this.lastTouchDistance
+
+if(Math.abs(diff) > 5){
+
+this.setZoom(this.zoomLevel + diff * 0.01)
+
 }
 
 }
 
-currentStream = await navigator.mediaDevices.getUserMedia(constraints)
-
-videoElement.srcObject = currentStream
-
-currentTrack = currentStream.getVideoTracks()[0]
-
-emit("camera:switched")
+this.lastTouchDistance = dist
 
 }
-
-
-// ================= TORCH CONTROL =================
-
-export async function toggleTorch(state){
-
-if(!currentTrack) return
-
-const capabilities = currentTrack.getCapabilities()
-
-if(!capabilities.torch) return
-
-await currentTrack.applyConstraints({
-
-advanced:[{torch:state}]
 
 })
 
-emit("camera:torch",state)
-
-}
-
-
-// ================= ZOOM CONTROL =================
-
-export async function setZoom(level){
-
-if(!currentTrack) return
-
-const capabilities = currentTrack.getCapabilities()
-
-if(!capabilities.zoom) return
-
-zoomLevel = level
-
-await currentTrack.applyConstraints({
-
-advanced:[{zoom:zoomLevel}]
-
+this.video.addEventListener("touchend", ()=>{
+this.lastTouchDistance = null
 })
 
-emit("camera:zoom",zoomLevel)
-
 }
 
+getDistance(t1, t2){
 
-// ================= AUTO FOCUS =================
-
-export async function autoFocus(){
-
-if(!currentTrack) return
-
-const capabilities = currentTrack.getCapabilities()
-
-if(!capabilities.focusMode) return
-
-await currentTrack.applyConstraints({
-
-advanced:[{focusMode:"continuous"}]
-
-})
-
-emit("camera:focus")
-
-}
-
-
-// ================= AUTO EXPOSURE =================
-
-export async function autoExposure(){
-
-if(!currentTrack) return
-
-const capabilities = currentTrack.getCapabilities()
-
-if(!capabilities.exposureMode) return
-
-await currentTrack.applyConstraints({
-
-advanced:[{exposureMode:"continuous"}]
-
-})
-
-emit("camera:exposure")
-
-}
-
-
-// ================= CAPTURE FRAME =================
-
-export function captureFrame(){
-
-if(!videoElement) return null
-
-const canvas = document.createElement("canvas")
-
-canvas.width = videoElement.videoWidth
-canvas.height = videoElement.videoHeight
-
-const ctx = canvas.getContext("2d")
-
-ctx.drawImage(videoElement,0,0)
-
-return ctx.getImageData(
-0,
-0,
-canvas.width,
-canvas.height
+return Math.hypot(
+t2.clientX - t1.clientX,
+t2.clientY - t1.clientY
 )
 
 }
+
+enableTapFocus(){
+
+this.video.addEventListener("click", async (e)=>{
+
+const rect = this.video.getBoundingClientRect()
+
+const x = (e.clientX - rect.left) / rect.width
+const y = (e.clientY - rect.top) / rect.height
+
+this.applyConstraints({
+advanced:[{
+focusMode: "manual",
+pointsOfInterest: [{ x, y }]
+}]
+})
+
+Events.emit("camera:focus", { x, y })
+
+this.showFocusAnimation(e.clientX, e.clientY)
+
+})
+
+}
+
+showFocusAnimation(x, y){
+
+const focusRing = document.createElement("div")
+
+focusRing.style.position = "absolute"
+focusRing.style.left = `${x - 30}px`
+focusRing.style.top = `${y - 30}px`
+focusRing.style.width = "60px"
+focusRing.style.height = "60px"
+focusRing.style.border = "2px solid #00ffcc"
+focusRing.style.borderRadius = "50%"
+focusRing.style.pointerEvents = "none"
+focusRing.style.transition = "all 0.3s ease"
+focusRing.style.zIndex = "9999"
+
+document.body.appendChild(focusRing)
+
+setTimeout(()=>{
+focusRing.style.transform = "scale(0.6)"
+focusRing.style.opacity = "0"
+}, 100)
+
+setTimeout(()=>{
+focusRing.remove()
+}, 400)
+
+}
+
+enableDoubleTapSwitch(){
+
+this.video.addEventListener("dblclick", ()=>{
+Camera.switchCamera()
+})
+
+}
+
+}
+
+const Controls = new CameraControls()
+
+export default Controls
