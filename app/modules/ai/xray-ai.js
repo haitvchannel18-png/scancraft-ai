@@ -1,168 +1,121 @@
 // modules/ai/xray-ai.js
 
+import Context from "./context.js"
+import LLM from "./llm-engine.js"
 import { EventBus } from "../core/events.js"
 
-import { getMaterialInfo } from "../knowledge/material-db.js"
-import { searchProductDB } from "../knowledge/product-db.js"
+class XRayAI {
 
-import { logAI } from "../utils/ai-logger.js"
-
-let currentObject = null
-
-export function initXrayAI(){
-
-EventBus.on("objectBrainComplete",setObjectContext)
-
-EventBus.emit("xrayAIReady")
-
+constructor(){
+this.cache = {}
 }
 
+// 🔥 MAIN FUNCTION
+async analyze(){
 
+const context = Context.getContext()
+const key = context.object + "_xray"
 
-function setObjectContext(payload){
-
-currentObject = payload
-
+// ⚡ CACHE
+if(this.cache[key]){
+return this.cache[key]
 }
 
-
-
-export async function analyzeInternalStructure(objectName){
+EventBus.emit("xrayThinking", {object: context.object})
 
 try{
 
-if(!objectName && currentObject){
-objectName = currentObject.object
-}
+// 🧠 PROMPT
+const prompt = this.buildPrompt(context)
 
-if(!objectName){
-return null
-}
+// 🤖 LLM CALL
+const raw = await LLM.generate(prompt)
 
-const materials = await getMaterialInfo(objectName)
+// 🎯 FORMAT
+const result = this.formatXRay(raw, context)
 
-const product = await searchProductDB(objectName)
+// 💾 CACHE
+this.cache[key] = result
 
-const components = inferComponents(objectName,materials,product)
-
-const layers = buildMaterialLayers(materials)
-
-const result = {
-
-object: objectName,
-
-materials,
-
-components,
-
-layers,
-
-analysis: generateAnalysis(objectName,materials,components)
-
-}
-
-EventBus.emit("xrayAnalysisComplete",result)
-
-logAI("XRayAnalysis",result)
+EventBus.emit("xrayReady", result)
 
 return result
 
 }catch(err){
 
-console.error("XRay AI error",err)
-
-EventBus.emit("xrayAnalysisError",err)
-
-return null
-
-}
-
-}
-
-
-
-function inferComponents(objectName,materials,product){
-
-const components = []
-
-if(product && product.components){
-
-product.components.forEach(c=>components.push(c))
-
-}
-
-if(objectName.toLowerCase().includes("phone")){
-
-components.push("display")
-components.push("battery")
-components.push("motherboard")
-components.push("camera module")
-
-}
-
-if(objectName.toLowerCase().includes("bottle")){
-
-components.push("container body")
-components.push("cap")
-components.push("liquid content")
-
-}
-
-if(objectName.toLowerCase().includes("chair")){
-
-components.push("seat")
-components.push("legs")
-components.push("support frame")
-
-}
-
-return [...new Set(components)]
-
-}
-
-
-
-function buildMaterialLayers(materials){
-
-if(!materials) return []
-
-return materials.map((mat,index)=>{
+EventBus.emit("xrayError", err)
 
 return {
-layer:index+1,
-material:mat
+object: context.object,
+parts: [],
+layers: [],
+description: ""
 }
-
-})
-
-}
-
-
-
-function generateAnalysis(objectName,materials,components){
-
-let text = `${objectName} internal structure analysis:\n`
-
-if(materials && materials.length){
-
-text += `Materials used: ${materials.join(", ")}.\n`
 
 }
 
-if(components && components.length){
+}
 
-text += `Main components include: ${components.join(", ")}.`
+// 🧠 PROMPT BUILDER
+buildPrompt(context){
+
+return `
+You are an engineering expert.
+
+Object: ${context.object}
+Category: ${context.category}
+
+Explain the internal structure of this object like an X-ray.
+
+Give:
+1. Internal components
+2. Layers
+3. How parts are connected
+4. How it works internally
+
+Keep it simple and structured.
+`
+}
+
+// 🎯 FORMAT OUTPUT
+formatXRay(text, context){
+
+return {
+object: context.object,
+description: text,
+parts: this.extractParts(text),
+layers: this.extractLayers(text),
+timestamp: Date.now()
+}
 
 }
 
-return text
+// 🔍 EXTRACT PARTS
+extractParts(text){
+
+const keywords = [
+"battery","motor","circuit","gear",
+"sensor","chip","board","screen"
+]
+
+const lower = text.toLowerCase()
+
+return keywords.filter(k => lower.includes(k))
 
 }
 
+// 🧩 EXTRACT LAYERS
+extractLayers(text){
 
+const lines = text.split("\n")
 
-export function getCurrentObject(){
-
-return currentObject
+return lines.filter(line => 
+line.toLowerCase().includes("layer") ||
+line.toLowerCase().includes("inside")
+)
 
 }
+
+}
+
+export default new XRayAI()
