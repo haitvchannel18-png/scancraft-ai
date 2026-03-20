@@ -2,55 +2,68 @@
 
 import { EventBus } from "../core/events.js"
 
-const AMAZON_BASE = "https://www.amazon.com/s?k="
+class AmazonSearch {
 
-export async function searchAmazon(objectLabel){
+constructor(){
+this.baseURL = "https://www.amazon.in/s?k="
+}
 
-if(!objectLabel) return null
+// 🔥 MAIN SEARCH
+async search(query){
 
-const query = encodeURIComponent(objectLabel)
+if(!query) return []
 
-const url = AMAZON_BASE + query
+EventBus.emit("amazonSearchStart", query)
 
-const priceRange = estimatePrice(objectLabel)
+try{
 
-const result = {
+const url = this.baseURL + encodeURIComponent(query)
 
-marketplace:"Amazon",
+// ⚡ Fake structured result (browser-safe)
+const results = this.buildResults(query, url)
 
-query:objectLabel,
+EventBus.emit("amazonSearchComplete", results)
 
-searchUrl:url,
+return results
 
-price:priceRange,
+}catch(err){
 
-note:"Open link to view live marketplace results"
+EventBus.emit("amazonSearchError", err)
+return []
 
 }
 
-EventBus.emit("amazonSearchReady",result)
+}
 
-return result
+// 🧠 RESULT BUILDER
+buildResults(query, url){
+
+const products = []
+
+for(let i=1;i<=5;i++){
+
+products.push({
+title: `${query} ${i}`,
+price: this.randomPrice(),
+rating: (Math.random()*2+3).toFixed(1),
+platform: "Amazon",
+link: url,
+confidence: 0.8
+})
 
 }
 
-
-
-function estimatePrice(label){
-
-const ranges = {
-
-bottle:"$5 - $25",
-chair:"$40 - $200",
-laptop:"$500 - $2500",
-phone:"$200 - $1500",
-car:"$10000 - $80000"
+return products
 
 }
 
-const key = label.toLowerCase()
+// 💰 RANDOM PRICE (UI demo)
+randomPrice(){
 
-if(ranges[key]) return ranges[key]
+return "₹" + (Math.floor(Math.random()*5000)+500)
 
-return "$10 - $500"
 }
+
+}
+
+export default new AmazonSearch()
