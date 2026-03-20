@@ -1,173 +1,115 @@
 // modules/ai/diy-ai.js
 
+import Context from "./context.js"
+import LLM from "./llm-engine.js"
 import { EventBus } from "../core/events.js"
 
-import { getMaterialInfo } from "../knowledge/material-db.js"
-import { logAI } from "../utils/ai-logger.js"
-import { cacheKnowledge } from "../memory/cache-manager.js"
+class DIYAI {
 
-let activeObject = null
-let diyCache = null
-
-export function initDIYAI(){
-
-EventBus.on("objectBrainComplete",setObjectContext)
-
-EventBus.emit("diyAIReady")
-
+constructor(){
+this.cache = {}
 }
 
+// 🔥 MAIN FUNCTION
+async generateDIY(userInput = "how to make this"){
 
+const context = Context.getContext()
 
-function setObjectContext(payload){
+const key = context.object + "_diy"
 
-activeObject = payload
-
+// ⚡ CACHE CHECK
+if(this.cache[key]){
+return this.cache[key]
 }
 
-
-
-export async function generateDIYIdeas(objectName){
+EventBus.emit("diyThinking", {object: context.object})
 
 try{
 
-if(!objectName && activeObject){
-objectName = activeObject.object
-}
+const prompt = this.buildPrompt(context, userInput)
 
-if(!objectName){
-return null
-}
+// 🧠 LLM CALL
+const response = await LLM.generate(prompt)
 
-const materials = await getMaterialInfo(objectName)
+// 🎯 STRUCTURE OUTPUT
+const diyData = this.formatDIY(response, context)
 
-const ideas = buildDIYIdeas(objectName,materials)
+// 💾 CACHE
+this.cache[key] = diyData
 
-const result = {
+EventBus.emit("diyReady", diyData)
 
-object: objectName,
-
-materials,
-
-ideas,
-
-generatedAt: Date.now()
-
-}
-
-diyCache = result
-
-cacheKnowledge("diy-"+objectName,result)
-
-EventBus.emit("diyIdeasReady",result)
-
-logAI("DIYIdeas",result)
-
-return result
+return diyData
 
 }catch(err){
 
-console.error("DIY AI error",err)
+EventBus.emit("diyError", err)
 
-EventBus.emit("diyAIError",err)
+return {
+title: "DIY unavailable",
+steps: [],
+tools: [],
+materials: []
+}
 
-return null
+}
+
+}
+
+// 🧠 PROMPT BUILDER
+buildPrompt(context, userInput){
+
+return `
+You are a DIY expert.
+
+Object: ${context.object}
+Category: ${context.category}
+Material: ${context.material}
+
+User wants: ${userInput}
+
+Generate a DIY guide with:
+
+1. Required materials
+2. Tools needed
+3. Step-by-step instructions
+4. Safety tips
+
+Keep it simple and practical.
+`
+}
+
+// 🎯 FORMAT RESPONSE
+formatDIY(text, context){
+
+// basic parsing (can upgrade later)
+const lines = text.split("\n")
+
+return {
+object: context.object,
+title: `DIY ${context.object}`,
+raw: text,
+steps: lines.filter(l => l.match(/^\d/)),
+tools: this.extractSection(text, "tools"),
+materials: this.extractSection(text, "materials"),
+safety: this.extractSection(text, "safety")
+}
+
+}
+
+// 🧩 EXTRACT SECTION
+extractSection(text, keyword){
+
+const lower = text.toLowerCase()
+
+if(!lower.includes(keyword)) return []
+
+return text
+.split("\n")
+.filter(l => l.toLowerCase().includes(keyword))
 
 }
 
 }
 
-
-
-function buildDIYIdeas(objectName,materials){
-
-const ideas = []
-
-const name = objectName.toLowerCase()
-
-if(name.includes("bottle")){
-
-ideas.push({
-title:"Plant Pot",
-description:"Cut the bottle and use it as a small plant pot."
-})
-
-ideas.push({
-title:"DIY Lamp",
-description:"Add LED lights inside to create a decorative lamp."
-})
-
-ideas.push({
-title:"Storage Container",
-description:"Use the bottle to store small screws or tools."
-})
-
-}
-
-if(name.includes("chair")){
-
-ideas.push({
-title:"Chair Repaint",
-description:"Repaint the chair using spray paint for a modern look."
-})
-
-ideas.push({
-title:"Cushion Upgrade",
-description:"Add soft foam cushions to increase comfort."
-})
-
-}
-
-if(name.includes("phone")){
-
-ideas.push({
-title:"DIY Phone Stand",
-description:"Use cardboard or plastic to build a phone stand."
-})
-
-ideas.push({
-title:"Lens Macro Attachment",
-description:"Attach a small lens to convert camera into macro camera."
-})
-
-}
-
-if(materials && materials.includes("plastic")){
-
-ideas.push({
-title:"Recycled Craft",
-description:"Melt and reshape plastic into new creative objects."
-})
-
-}
-
-if(materials && materials.includes("wood")){
-
-ideas.push({
-title:"Wood Polishing",
-description:"Sand and polish wood surface to restore finish."
-})
-
-}
-
-return ideas
-
-}
-
-
-
-export function getLastDIYIdeas(){
-
-return diyCache
-
-}
-
-
-
-export function clearDIYIdeas(){
-
-diyCache = null
-
-EventBus.emit("diyIdeasCleared")
-
-}
+export default new DIYAI()
