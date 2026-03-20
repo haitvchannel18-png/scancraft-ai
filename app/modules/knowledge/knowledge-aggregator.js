@@ -1,188 +1,140 @@
 // modules/knowledge/knowledge-aggregator.js
 
+import ObjectInfo from "./object-info.js"
+import HistorySearch from "./history-search.js"
+import PriceSearch from "./price-search.js"
+import MaterialDB from "./material-db.js"
+import ProductDB from "./product-db.js"
+import RAG from "./rag-retriever.js"
+import Cache from "../memory/knowledge-cache.js"
 import { EventBus } from "../core/events.js"
 
-import { getHistoryInfo } from "../data/history.js"
-import { getMaterialInfo } from "../data/materials.js"
-import { getManufacturingInfo } from "../data/manufacturing.js"
+class KnowledgeAggregator {
 
-import { searchWiki } from "./wiki.js"
-import { searchPrice } from "./price-search.js"
-import { predictFuture } from "./future-predict.js"
+constructor(){
+this.sources = ["object","history","price","material","product","rag"]
+}
 
+// 🔥 MAIN FUNCTION
+async aggregate(object){
 
+if(!object) return null
 
-export async function aggregateKnowledge(input){
+const key = "knowledge_" + object.toLowerCase()
 
-const {label, reasoning} = input
+// ⚡ CACHE
+const cached = Cache.get(key)
+if(cached) return cached
+
+EventBus.emit("knowledgeStart", {object})
 
 try{
 
+// 🧠 MULTI SOURCE PARALLEL
 const [
-
+info,
 history,
-materials,
-manufacturing,
-wiki,
 price,
-future
-
+material,
+products,
+rag
 ] = await Promise.all([
-
-safeHistory(label),
-safeMaterial(reasoning),
-safeManufacturing(label),
-safeWiki(label),
-safePrice(label),
-safeFuture(label)
-
+ObjectInfo.getInfo(object),
+HistorySearch.search(object),
+PriceSearch.getPrice(object),
+MaterialDB.get(object),
+ProductDB.search(object),
+RAG.retrieve(object)
 ])
 
-
-
-const knowledge = {
-
-object: label,
-
-category: reasoning.category,
-
-material: reasoning.material,
-
-confidence: reasoning.confidence,
-
+// 🧠 MERGE ALL DATA
+const result = this.combine({
+object,
+info,
 history,
-
-materials,
-
-manufacturing,
-
 price,
-
-wiki,
-
-future,
-
-summary: generateSummary({
-label,
-history,
-materials,
-wiki
+material,
+products,
+rag
 })
 
-}
+// 💾 CACHE
+Cache.set(key, result)
 
+EventBus.emit("knowledgeComplete", result)
 
-EventBus.emit("knowledgeReady",knowledge)
-
-return knowledge
-
+return result
 
 }catch(err){
 
-console.error("Knowledge aggregation error",err)
-
-EventBus.emit("knowledgeError",err)
-
+EventBus.emit("knowledgeError", err)
 return null
 
 }
 
 }
 
+// 🧠 COMBINE ENGINE
+combine(data){
 
+return {
+object: data.object,
 
-async function safeHistory(label){
+// 📌 BASIC
+category: data.info?.category || "unknown",
+use: data.info?.use || "",
 
-try{
-return await getHistoryInfo(label)
-}catch{
-return null
+// 📜 HISTORY
+history: data.history?.summary || "",
+timeline: data.history?.timeline || [],
+
+// 💰 PRICE
+price: data.price || {},
+
+// 🧱 MATERIAL
+materials: data.material || [],
+
+// 🛒 PRODUCTS
+products: data.products || [],
+
+// 📚 KNOWLEDGE
+summary:
+data.info?.summary ||
+data.rag?.summary ||
+data.history?.summary || "",
+
+facts:
+data.info?.facts ||
+data.rag?.facts || [],
+
+// 🌐 SOURCE
+source:
+data.info?.source ||
+data.rag?.source || "",
+
+// 📊 CONFIDENCE
+confidence: this.computeConfidence(data),
+
+timestamp: Date.now()
 }
 
 }
 
+// 📊 CONFIDENCE ENGINE
+computeConfidence(data){
 
+let score = 0
 
-async function safeMaterial(reasoning){
+if(data.info) score += 0.2
+if(data.history) score += 0.2
+if(data.price) score += 0.2
+if(data.material) score += 0.2
+if(data.rag) score += 0.2
 
-try{
-return await getMaterialInfo(reasoning.material)
-}catch{
-return null
-}
+return Math.min(1, score)
 
-}
-
-
-
-async function safeManufacturing(label){
-
-try{
-return await getManufacturingInfo(label)
-}catch{
-return null
 }
 
 }
 
-
-
-async function safeWiki(label){
-
-try{
-return await searchWiki(label)
-}catch{
-return null
-}
-
-}
-
-
-
-async function safePrice(label){
-
-try{
-return await searchPrice(label)
-}catch{
-return null
-}
-
-}
-
-
-
-async function safeFuture(label){
-
-try{
-return await predictFuture(label)
-}catch{
-return null
-}
-
-}
-
-
-
-function generateSummary(data){
-
-const parts = []
-
-if(data.label){
-parts.push(`${data.label} is a commonly used object.`)
-}
-
-if(data.history){
-parts.push(`Historically it evolved as: ${data.history.short || ""}`)
-}
-
-if(data.materials){
-parts.push(`It is often made using ${data.materials.primary || "various materials"}.`)
-}
-
-if(data.wiki){
-parts.push(data.wiki.extract || "")
-}
-
-return parts.join(" ")
-
-}
+export default new KnowledgeAggregator()
