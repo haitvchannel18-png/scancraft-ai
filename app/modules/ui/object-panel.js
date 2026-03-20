@@ -1,111 +1,138 @@
 // modules/ui/object-panel.js
 
 import { EventBus } from "../core/events.js"
+import Animation from "./animation-engine.js"
 
-let panel
-let titleEl
-let descriptionEl
-let imageEl
-let buttons = {}
+class ObjectPanel {
 
-export function initObjectPanel(containerId="object-panel"){
+constructor(){
+this.container = document.getElementById("object-panel")
+this.isOpen = false
+}
 
-const container = document.getElementById(containerId)
+// 🔥 OPEN PANEL
+open(data){
 
-panel = document.createElement("div")
-panel.className = "object-panel"
+if(!this.container || !data) return
 
-titleEl = document.createElement("h2")
-descriptionEl = document.createElement("p")
+this.container.innerHTML = this.buildUI(data)
 
-imageEl = document.createElement("img")
-imageEl.className = "object-image"
+this.container.style.display = "block"
 
-const btnContainer = document.createElement("div")
-btnContainer.className = "object-buttons"
+Animation.apply(this.container, "slide-up")
 
-buttons.view3D = createButton("3D View","objectView3D")
-buttons.paint = createButton("Paint","objectPaint")
-buttons.buy = createButton("Buy","objectBuy")
-buttons.history = createButton("History","objectHistory")
+this.attachEvents(data)
 
-btnContainer.appendChild(buttons.view3D)
-btnContainer.appendChild(buttons.paint)
-btnContainer.appendChild(buttons.buy)
-btnContainer.appendChild(buttons.history)
+this.isOpen = true
 
-panel.appendChild(imageEl)
-panel.appendChild(titleEl)
-panel.appendChild(descriptionEl)
-panel.appendChild(btnContainer)
-
-container.appendChild(panel)
-
-attachEvents()
-
-hidePanel()
+EventBus.emit("panelOpened", data)
 
 }
 
-function createButton(label,eventName){
+// ❌ CLOSE PANEL
+close(){
 
-const btn = document.createElement("button")
-btn.textContent = label
+if(!this.container) return
 
-btn.onclick = () => {
+Animation.apply(this.container, "fade-out")
 
-EventBus.emit(eventName)
+setTimeout(()=>{
+this.container.style.display = "none"
+},300)
 
-}
+this.isOpen = false
 
-return btn
-
-}
-
-function attachEvents(){
-
-EventBus.on("objectDetected",showObject)
-
-EventBus.on("objectPanelHide",hidePanel)
+EventBus.emit("panelClosed")
 
 }
 
-function showObject(data){
+// 🧠 BUILD UI
+buildUI(data){
 
-if(!data) return
+return `
+<div class="panel-header">
+<h2>${data.object || data.title || "Object"}</h2>
+<button class="close-btn">✖</button>
+</div>
 
-titleEl.textContent = data.label || "Unknown Object"
+<div class="panel-content">
 
-descriptionEl.textContent = data.description || "No description available"
+${this.section("📦 Category", data.category)}
+${this.section("🧱 Materials", this.format(data.materials))}
+${this.section("📜 History", data.history)}
+${this.section("🔮 Future", this.format(data.future))}
+${this.section("💰 Price Range", this.formatPrice(data.price))}
+${this.section("🧠 AI Insight", data.summary)}
 
-if(data.image){
-imageEl.src = data.image
-imageEl.style.display = "block"
-}else{
-imageEl.style.display = "none"
+<div class="panel-actions">
+<button class="btn-chat">Ask AI</button>
+<button class="btn-3d">View 3D</button>
+<button class="btn-buy">Buy</button>
+</div>
+
+</div>
+`
 }
 
-panel.style.display = "block"
+// 🧠 SECTION BUILDER
+section(title, content){
+
+if(!content) return ""
+
+return `
+<div class="panel-section">
+<h3>${title}</h3>
+<p>${content}</p>
+</div>
+`
 
 }
 
-export function hidePanel(){
+// 🎯 EVENTS
+attachEvents(data){
 
-if(panel){
-panel.style.display = "none"
+// close
+this.container.querySelector(".close-btn").onclick = ()=>{
+this.close()
+}
+
+// AI chat
+this.container.querySelector(".btn-chat").onclick = ()=>{
+EventBus.emit("openChat", data)
+}
+
+// 3D view
+this.container.querySelector(".btn-3d").onclick = ()=>{
+EventBus.emit("view3D", data)
+}
+
+// buy
+this.container.querySelector(".btn-buy").onclick = ()=>{
+EventBus.emit("buyRequest", data)
 }
 
 }
 
-export function updateDescription(text){
+// 🧠 FORMAT ARRAY
+format(arr){
 
-descriptionEl.textContent = text
+if(!arr) return ""
+if(Array.isArray(arr)) return arr.join(", ")
+return arr
+}
+
+// 💰 FORMAT PRICE
+formatPrice(price){
+
+if(!price) return "N/A"
+
+if(typeof price === "object"){
+return `₹${price.min} - ₹${price.max}`
+}
+
+return price
+}
 
 }
 
-export function updateImage(url){
-
-imageEl.src = url
-imageEl.style.display = "block"
-
-}
+export default new ObjectPanel()
