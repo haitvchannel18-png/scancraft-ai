@@ -1,186 +1,22 @@
-// modules/detection/yolo.js
+/**
+ * ScanCraft AI
+ * YOLOv8 Detection Engine (ONNX + WebGPU/WebGL)
+ */
 
-import { EventBus } from "../core/events.js"
+import Events from "../core/events.js"
+import ModelLoader from "../core/model-loader.js"
+import Adaptive from "../core/adaptive-detection.js"
+import Performance from "../core/performance.js"
 
-let session = null
-let inputSize = 640
+class YOLOEngine {
 
-const MODEL_PATH = "/models/detection/yolov8n.onnx"
+constructor(){
 
-export async function loadYOLO(){
+this.model = null
+this.inputSize = 640
+this.isLoaded = false
 
-if(session) return session
-
-const ort = window.ort
-
-session = await ort.InferenceSession.create(MODEL_PATH,{
-executionProviders:["webgl"]
-})
-
-EventBus.emit("yoloLoaded")
-
-return session
-
-}
-
-
-
-export async function detectObjects(canvas){
-
-if(!session){
-await loadYOLO()
-}
-
-const ctx = canvas.getContext("2d")
-
-const imageData = ctx.getImageData(0,0,canvas.width,canvas.height)
-
-const tensor = preprocess(imageData)
-
-const feeds = {
-images: tensor
-}
-
-const results = await session.run(feeds)
-
-const output = results.output0.data
-
-const detections = decodeYOLO(output,canvas.width,canvas.height)
-
-return detections
-
-}
-
-
-
-function preprocess(imageData){
-
-const data = imageData.data
-const size = inputSize
-
-const floatData = new Float32Array(3*size*size)
-
-let i = 0
-
-for(let y=0;y<size;y++){
-for(let x=0;x<size;x++){
-
-const px = (y*size + x)*4
-
-floatData[i] = data[px]/255
-floatData[i + size*size] = data[px+1]/255
-floatData[i + size*size*2] = data[px+2]/255
-
-i++
-
-}
-}
-
-return new ort.Tensor("float32",floatData,[1,3,size,size])
-
-}
-
-
-
-function decodeYOLO(output,imgW,imgH){
-
-const results = []
-
-const numClasses = 80
-const stride = numClasses + 5
-
-for(let i=0;i<output.length;i+=stride){
-
-const conf = output[i+4]
-
-if(conf < 0.4) continue
-
-let bestClass = -1
-let bestScore = 0
-
-for(let c=0;c<numClasses;c++){
-
-const score = output[i+5+c]
-
-if(score > bestScore){
-bestScore = score
-bestClass = c
-}
-
-}
-
-const score = conf * bestScore
-
-if(score < 0.45) continue
-
-const cx = output[i]
-const cy = output[i+1]
-const w = output[i+2]
-const h = output[i+3]
-
-const x = cx - w/2
-const y = cy - h/2
-
-results.push({
-
-label: classNames[bestClass],
-confidence: score,
-box: [x*imgW,y*imgH,w*imgW,h*imgH]
-
-})
-
-}
-
-return nms(results)
-
-}
-
-
-
-function nms(boxes){
-
-const selected = []
-
-boxes.sort((a,b)=>b.confidence - a.confidence)
-
-while(boxes.length){
-
-const chosen = boxes.shift()
-
-selected.push(chosen)
-
-boxes = boxes.filter(b=>iou(chosen.box,b.box) < 0.45)
-
-}
-
-return selected
-
-}
-
-
-
-function iou(a,b){
-
-const [x1,y1,w1,h1] = a
-const [x2,y2,w2,h2] = b
-
-const xa = Math.max(x1,x2)
-const ya = Math.max(y1,y2)
-
-const xb = Math.min(x1+w1,x2+w2)
-const yb = Math.min(y1+h1,y2+h2)
-
-const inter = Math.max(0,xb-xa) * Math.max(0,yb-ya)
-
-const union = w1*h1 + w2*h2 - inter
-
-return inter/union
-
-}
-
-
-
-const classNames = [
+this.labels = [
 "person","bicycle","car","motorcycle","airplane","bus","train","truck",
 "boat","traffic light","fire hydrant","stop sign","parking meter","bench",
 "bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe",
@@ -193,3 +29,145 @@ const classNames = [
 "toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear",
 "hair drier","toothbrush"
 ]
+
+}
+
+async load(){
+
+this.model = await ModelLoader.loadONNX(
+"models/detection/yolov8n.onnx",
+"yolo"
+)
+
+this.isLoaded = true
+
+Events.emit("yolo:loaded")
+
+}
+
+async detect(frame){
+
+if(!this.isLoaded) return []
+
+Performance.start("yolo-inference")
+
+const strategy = Adaptive.getStrategy()
+
+const input = this.preprocess(frame, strategy)
+
+const output = await this.model.run(input)
+
+const detections = this.postprocess(output)
+
+Performance.end("yolo-inference")
+
+Events.emit("yolo:detected", detections)
+
+return detections
+
+}
+
+preprocess(frame, strategy){
+
+// Resize input
+const size = strategy === "high-accuracy" ? 640 :
+             strategy === "lightweight" ? 320 : 416
+
+this.inputSize = size
+
+const canvas = document.createElement("canvas")
+const ctx = canvas.getContext("2d")
+
+canvas.width = size
+canvas.height = size
+
+ctx.drawImage(
+this.imageDataToCanvas(frame),
+0, 0, size, size
+)
+
+const imageData = ctx.getImageData(0,0,size,size)
+
+const input = new Float32Array(size * size * 3)
+
+let j = 0
+
+for(let i=0;i<imageData.data.length;i+=4){
+
+input[j++] = imageData.data[i] / 255
+input[j++] = imageData.data[i+1] / 255
+input[j++] = imageData.data[i+2] / 255
+
+}
+
+return {
+images: new ort.Tensor("float32", input, [1,3,size,size])
+}
+
+}
+
+imageDataToCanvas(imageData){
+
+const c = document.createElement("canvas")
+const ctx = c.getContext("2d")
+
+c.width = imageData.width
+c.height = imageData.height
+
+ctx.putImageData(imageData,0,0)
+
+return c
+
+}
+
+postprocess(output){
+
+// YOLO raw output parsing
+const data = output.output0.data
+
+const results = []
+
+for(let i=0;i<data.length;i+=85){
+
+const confidence = data[i+4]
+
+if(confidence < 0.4) continue
+
+let maxClass = 0
+let maxScore = 0
+
+for(let j=5;j<85;j++){
+
+if(data[i+j] > maxScore){
+maxScore = data[i+j]
+maxClass = j-5
+}
+
+}
+
+if(maxScore > 0.5){
+
+results.push({
+label: this.labels[maxClass],
+confidence: maxScore,
+bbox: [
+data[i],
+data[i+1],
+data[i+2],
+data[i+3]
+]
+})
+
+}
+
+}
+
+return results
+
+}
+
+}
+
+const YOLO = new YOLOEngine()
+
+export default YOLO
