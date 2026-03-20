@@ -1,161 +1,148 @@
-// app/app.js
-
+// 🔥 CORE IMPORTS
 import CONFIG from "./modules/utils/config.js"
-import { EventBus } from "./modules/core/events.js"
 
-// 🎥 Camera
+// 🎥 CAMERA
 import Camera from "./modules/camera/camera.js"
 
-// 🧠 Detection
-import Detector from "./modules/detection/detector.js"
-
-// 🤖 AI Brain
-import ReasoningEngine from "./modules/ai/reasoning-engine.js"
+// 🧠 AI
 import VisionAI from "./modules/ai/vision-ai.js"
+import ContextAI from "./modules/ai/context.js"
+import ObjectChat from "./modules/ai/object-chat.js"
+import ResultFormatter from "./modules/ai/result-formatter.js"
 
-// 🔊 Sound
-import SoundLoader from "./modules/audio/sound-loader.js"
+// 🧠 LEARNING
+import PatternLearner from "./modules/learning-ai/pattern-learner.js"
+
+// 💰 COMMERCE
+import PriceAggregator from "./modules/commerce/price-aggregator.js"
+
+// 🔊 AUDIO
 import SoundManager from "./modules/audio/sound-manager.js"
-import UISounds from "./modules/audio/ui-sounds.js"
 
-// 🎤 Voice
-import AutoVoice from "./modules/audio/auto-voice.js"
+// 🔐 AUTH
+import Auth from "./modules/auth/auth.js"
+
+// ☁️ CLOUD
+import CloudSync from "./modules/cloud/cloud-sync.js"
 
 // 🎨 UI
-import ScanOverlay from "./modules/ui/scan-overlay.js"
-import ObjectPanel from "./modules/ui/object-panel.js"
-import LoadingUI from "./modules/ui/loading-visuals.js"
+import Overlay from "./modules/ui/scan-overlay.js"
+import Panel from "./modules/ui/object-panel.js"
+import Loader from "./modules/ui/loading-visuals.js"
 
-// ⚡ Performance
-import PerformanceMonitor from "./modules/core/performance-monitor.js"
+// ⚡ GLOBAL STATE
+let currentUser = null
 
-// =============================
-// 🚀 APP ENGINE
-// =============================
+// 🚀 INIT APP
+async function init(){
 
-class ScanCraftApp {
+console.log("🔥 ScanCraft AI Started")
 
-constructor(){
-this.video = null
-this.isRunning = false
-}
+// 🎥 Camera start
+await Camera.start("camera")
 
-// 🔥 INIT APP
-async init(){
+// 🔐 Auth listener
+Auth.onChange(user=>{
+currentUser = user
+console.log("👤 User:", user)
+})
 
-console.log("🚀 ScanCraft AI Starting...")
-
-// UI Elements
-this.video = document.getElementById("camera")
-
-// 🎧 Load Sounds
-SoundLoader.init()
-
-// 🔊 Background ambience
-SoundManager.loop("background",0.15)
-
-// 🎤 Voice Auto
-AutoVoice.init()
-
-// ⚡ Performance monitor
-PerformanceMonitor.start()
-
-// 🎥 Camera init
-await Camera.init(this.video)
-
-// 🎯 Start pipeline
-this.startPipeline()
+// 🎤 Click scan (tap anywhere)
+document.body.addEventListener("click", scanObject)
 
 }
 
-// =============================
-// 🔥 MAIN PIPELINE
-// =============================
+//////////////////////////////////////////////////////
+// 🔍 MAIN SCAN PIPELINE (FULL AI FLOW 💀)
+//////////////////////////////////////////////////////
 
-startPipeline(){
-
-if(this.isRunning) return
-
-this.isRunning = true
-
-Camera.startStreaming(async (frame)=>{
+async function scanObject(){
 
 try{
 
-// ⚡ loading animation
-LoadingUI.show()
+Loader.show()
+Overlay.show()
 
-// 🔍 detection
-const detections = await Detector.detect(frame)
+// 🔊 sound
+SoundManager.play("scan-start")
 
-if(!detections || detections.length === 0){
-LoadingUI.hide()
-return
+// 🎥 Capture frame
+const frame = Camera.capture()
+
+// 🧠 Vision AI detect
+const vision = await VisionAI.detect(frame)
+
+// 🧠 Context understanding
+const context = await ContextAI.analyze(vision)
+
+// 💬 AI explanation
+const explanation = await ObjectChat.explain(context)
+
+// 🧠 Learning
+PatternLearner.learn(vision.label)
+
+// 💰 Price search
+const price = await PriceAggregator.search(vision.label)
+
+// 🧠 Format result
+const result = ResultFormatter.format({
+vision,
+context,
+explanation,
+price
+})
+
+// 🎨 Show UI
+Panel.show(result)
+
+// 🔊 complete sound
+SoundManager.play("scan-complete")
+
+// ☁️ SAVE TO CLOUD
+if(currentUser){
+await CloudSync.saveScan(currentUser.uid, result)
 }
 
-// 🎯 best object
-const object = detections[0]
-
-// 🧠 vision AI
-const visionData = await VisionAI.process(object)
-
-// 🧠 reasoning
-const reasoning = await ReasoningEngine({
-label: object.label,
-similarObjects: visionData.similar || []
-})
-
-// 🎨 UI update
-ScanOverlay.draw(object)
-ObjectPanel.show(reasoning)
-
-// 🔊 scan complete sound
-UISounds.success()
-
-// 📡 emit event (voice trigger)
-EventBus.emit("resultReady",{
-summary: `${reasoning.object} detected`,
-data: reasoning
-})
-
-// ⚡ performance log
-PerformanceMonitor.mark("frameProcessed")
+// 💾 local save
+PatternLearner.save()
 
 }catch(e){
-console.error(e)
-UISounds.error()
-}
 
-finally{
-LoadingUI.hide()
-}
+console.error("💀 ERROR:", e)
 
-})
+}finally{
 
-}
-
-// =============================
-// 🛑 STOP
-// =============================
-
-stop(){
-
-Camera.stopStreaming()
-this.isRunning = false
+Loader.hide()
+Overlay.hide()
 
 }
 
 }
 
-// =============================
-// 🚀 BOOTSTRAP
-// =============================
+//////////////////////////////////////////////////////
+// 🔐 LOGIN BUTTON
+//////////////////////////////////////////////////////
 
-const app = new ScanCraftApp()
+document.getElementById("login-btn").onclick = async ()=>{
 
-window.addEventListener("load", ()=>{
-app.init()
-})
+try{
 
-// optional debug
-window.app = app
+const user = await Auth.login()
+
+console.log("🔥 LOGIN SUCCESS:", user)
+
+SoundManager.play("click")
+
+}catch(e){
+
+console.error("Login error", e)
+
+}
+
+}
+
+//////////////////////////////////////////////////////
+// 🚀 START APP
+//////////////////////////////////////////////////////
+
+init()
