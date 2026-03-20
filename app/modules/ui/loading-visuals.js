@@ -1,136 +1,102 @@
 // modules/ui/loading-visuals.js
 
 import { EventBus } from "../core/events.js"
+import Animation from "./animation-engine.js"
 
-let container
-let spinner
-let dots
-let progressBar
-let active = false
+class LoadingVisuals {
 
-export function initLoadingVisuals(containerId = "loading-visuals"){
-
-container = document.getElementById(containerId)
-
-spinner = createSpinner()
-dots = createDots()
-progressBar = createProgressBar()
-
-container.appendChild(spinner)
-container.appendChild(dots)
-container.appendChild(progressBar)
-
-attachEvents()
-
-hide()
-
+constructor(){
+this.container = document.getElementById("loading")
+this.interval = null
 }
 
-function createSpinner(){
+// 🔥 SHOW LOADING
+show(message = "Analyzing..."){
 
-const el = document.createElement("div")
-el.className = "ai-spinner"
+if(!this.container) return
 
-return el
-
-}
-
-function createDots(){
-
-const el = document.createElement("div")
-el.className = "ai-dots"
-
-el.innerHTML = `
-<span></span>
-<span></span>
-<span></span>
+this.container.innerHTML = `
+<div class="ai-loading-box">
+<div class="ai-loader"></div>
+<div class="ai-text">${message}</div>
+</div>
 `
 
-return el
+this.container.style.display = "flex"
+
+// ✨ animation
+Animation.apply(this.container, "fade-in")
+
+// 🔄 animated dots
+this.animateText()
+}
+
+// ❌ HIDE LOADING
+hide(){
+
+if(!this.container) return
+
+this.container.style.display = "none"
+
+if(this.interval){
+clearInterval(this.interval)
+this.interval = null
+}
 
 }
 
-function createProgressBar(){
+// 🔄 TEXT ANIMATION
+animateText(){
 
-const wrapper = document.createElement("div")
-wrapper.className = "ai-progress-wrapper"
+const textEl = this.container.querySelector(".ai-text")
 
-const bar = document.createElement("div")
-bar.className = "ai-progress"
+let dots = 0
 
-wrapper.appendChild(bar)
+this.interval = setInterval(()=>{
 
-return wrapper
+dots = (dots + 1) % 4
 
-}
+textEl.innerText = "AI is thinking" + ".".repeat(dots)
 
-function attachEvents(){
-
-EventBus.on("aiThinking",show)
-
-EventBus.on("aiResponse",hide)
-
-EventBus.on("scanStart",show)
-
-EventBus.on("scanComplete",hide)
+}, 400)
 
 }
 
-export function show(){
+// 🔥 ADVANCED MODE (scan loading)
+scanMode(){
 
-if(!container) return
+this.show("Scanning object...")
 
-container.style.display = "flex"
+const box = this.container.querySelector(".ai-loading-box")
 
-active = true
-
-animateProgress()
+if(box){
+Animation.apply(box, "scale-in")
+Animation.scanPulse(box)
+}
 
 }
 
-export function hide(){
+// 🧠 AUTO EVENTS
+initListeners(){
 
-if(!container) return
+EventBus.on("scanStart", ()=>{
+this.scanMode()
+})
 
-container.style.display = "none"
+EventBus.on("detectionComplete", ()=>{
+this.show("Recognizing object...")
+})
 
-active = false
+EventBus.on("reasoningComplete", ()=>{
+this.show("Generating insights...")
+})
 
-}
-
-function animateProgress(){
-
-if(!active) return
-
-const bar = progressBar.querySelector(".ai-progress")
-
-let width = 0
-
-const interval = setInterval(()=>{
-
-if(!active){
-
-clearInterval(interval)
-return
+EventBus.on("aiResponse", ()=>{
+this.hide()
+})
 
 }
 
-width += Math.random()*10
-
-if(width > 90) width = 90
-
-bar.style.width = width + "%"
-
-},300)
-
 }
 
-export function complete(){
-
-const bar = progressBar.querySelector(".ai-progress")
-
-bar.style.width = "100%"
-
-setTimeout(hide,300)
-
-}
+export default new LoadingVisuals()
