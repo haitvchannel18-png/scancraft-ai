@@ -1,114 +1,110 @@
 // modules/ai/object-chat.js
 
+import Context from "./context.js"
+import LLM from "./llm-engine.js"
+import Voice from "../voice/narration.js"
 import { EventBus } from "../core/events.js"
 
-import { generateConversation } from "./conversation-ai.js"
-import { getContext } from "./context.js"
+class ObjectChat {
 
-import { speak } from "../voice/narration.js"
-import { appendChatMessage } from "../ui/ai-chat-ui.js"
-
-import { logAI } from "../utils/ai-logger.js"
-import { cacheKnowledge } from "../memory/cache-manager.js"
-
-let activeKnowledge = null
-
-export function initObjectChat(){
-
-EventBus.on("objectBrainComplete", setActiveKnowledge)
-
-EventBus.emit("objectChatReady")
-
+constructor(){
+this.history = []
 }
 
+// 🔥 MAIN FUNCTION
+async talk(userInput){
 
+const context = Context.getContext()
 
-function setActiveKnowledge(payload){
-
-activeKnowledge = payload
-
-}
-
-
-
-export async function startConversation(question, knowledge){
+EventBus.emit("objectChatThinking", {object: context.object})
 
 try{
 
-if(!knowledge) knowledge = activeKnowledge
+// 🧠 PROMPT
+const prompt = this.buildPrompt(userInput, context)
 
-if(!knowledge){
-console.warn("No object context for conversation")
-return
-}
+// 🧠 LLM CALL
+const rawResponse = await LLM.generate(prompt)
 
-appendChatMessage({
-role:"user",
-text:question
-})
+// 🎯 FORMAT
+const response = this.formatResponse(rawResponse, context)
 
-const context = getContext()
+// 💾 MEMORY
+this.saveHistory(userInput, response)
 
-const answer = await generateConversation({
+// 🔊 VOICE
+Voice.speak(response.text)
 
-question,
-object:knowledge.object,
-brand:knowledge.brand,
-materials:knowledge.materials,
-history:knowledge.history,
-context
+// 📡 EVENT
+EventBus.emit("objectChatResponse", response)
 
-})
-
-appendChatMessage({
-role:"ai",
-text:answer
-})
-
-speak(answer)
-
-cacheKnowledge("conversation",{
-question,
-answer,
-object:knowledge.object
-})
-
-logAI("ObjectConversation",{
-question,
-answer
-})
-
-EventBus.emit("objectChatResponse",{
-question,
-answer
-})
+return response
 
 }catch(err){
 
-console.error("Conversation error",err)
+EventBus.emit("objectChatError", err)
 
-EventBus.emit("objectChatError",err)
-
+return {
+text: "Sorry, I can't respond right now.",
+error: true
 }
 
 }
 
+}
 
+// 🧠 PROMPT BUILDER (OBJECT POV)
+buildPrompt(userInput, context){
 
-export function ask(question){
+return `
+You are the object itself.
 
-if(!activeKnowledge) return
+Object: ${context.object}
+Category: ${context.category}
+Material: ${context.material}
 
-startConversation(question,activeKnowledge)
+Speak in first person like you ARE the object.
+
+User says: ${userInput}
+
+Respond in a natural, friendly way.
+Explain your purpose, structure, and features.
+Keep it engaging and simple.
+`
+}
+
+// 🎯 FORMAT RESPONSE
+formatResponse(text, context){
+
+return {
+object: context.object,
+text: text,
+tone: "friendly",
+timestamp: Date.now()
+}
 
 }
 
+// 💾 HISTORY
+saveHistory(input, response){
 
+this.history.push({
+input,
+response,
+time: Date.now()
+})
 
-export function resetConversation(){
-
-activeKnowledge = null
-
-EventBus.emit("objectChatReset")
+if(this.history.length > 20){
+this.history.shift()
+}
 
 }
+
+// 📊 GET HISTORY
+getHistory(){
+return this.history
+}
+
+}
+
+export default new ObjectChat()
