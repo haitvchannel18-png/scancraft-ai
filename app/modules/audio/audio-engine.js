@@ -1,155 +1,61 @@
-// ================= IMPORTS =================
+// modules/audio/audio-engine.js
 
-import { emit } from "../core/events.js"
-import { logAI } from "../utils/AILogger.js"
+class AudioEngine {
 
+constructor(){
+this.ctx = null
+this.listener = null
+this.initialized = false
+}
 
-// ================= STATE =================
+init(){
 
-let audioContext
-let masterGain
+this.ctx = new (window.AudioContext || window.webkitAudioContext)()
+this.listener = this.ctx.listener
 
-const soundCache = {}
+this.listener.positionX.value = 0
+this.listener.positionY.value = 0
+this.listener.positionZ.value = 0
 
-
-// ================= INIT AUDIO =================
-
-export async function initAudio(){
-
-if(audioContext) return
-
-audioContext = new (window.AudioContext || window.webkitAudioContext)()
-
-masterGain = audioContext.createGain()
-
-masterGain.gain.value = 0.9
-
-masterGain.connect(audioContext.destination)
-
-logAI("Audio engine initialized")
-
-emit("audio:ready")
+this.initialized = true
 
 }
 
+// 🔥 create spatial sound
+async playSpatial(url, x=0,y=0,z=1){
 
-// ================= LOAD SOUND =================
+if(!this.initialized) this.init()
 
-export async function loadSound(name, url){
+const res = await fetch(url)
+const buffer = await res.arrayBuffer()
+const audioBuffer = await this.ctx.decodeAudioData(buffer)
 
-if(soundCache[name]) return soundCache[name]
+const source = this.ctx.createBufferSource()
+source.buffer = audioBuffer
 
-const response = await fetch(url)
+const panner = this.ctx.createPanner()
 
-const arrayBuffer = await response.arrayBuffer()
+panner.panningModel = "HRTF"
+panner.distanceModel = "inverse"
 
-const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-
-soundCache[name] = audioBuffer
-
-return audioBuffer
-
-}
-
-
-// ================= PLAY SOUND =================
-
-export function playSound(name, volume = 1){
-
-if(!soundCache[name]){
-
-logAI("Sound not loaded: " + name)
-
-return
-
-}
-
-const source = audioContext.createBufferSource()
-
-const gain = audioContext.createGain()
-
-source.buffer = soundCache[name]
-
-gain.gain.value = volume
-
-source.connect(gain)
-
-gain.connect(masterGain)
-
-source.start(0)
-
-emit("audio:play", name)
-
-}
-
-
-// ================= PRELOAD SOUNDS =================
-
-export async function preloadSounds(soundList){
-
-for(const sound of soundList){
-
-await loadSound(sound.name, sound.url)
-
-}
-
-logAI("All sounds preloaded")
-
-emit("audio:preloaded")
-
-}
-
-
-// ================= STOP ALL =================
-
-export function stopAllSounds(){
-
-audioContext.close()
-
-audioContext = null
-
-emit("audio:stopped")
-
-}
-
-
-// ================= SET MASTER VOLUME =================
-
-export function setVolume(value){
-
-if(!masterGain) return
-
-masterGain.gain.value = value
-
-emit("audio:volume", value)
-
-}
-
-
-// ================= SPATIAL SOUND =================
-
-export function playSpatialSound(name, x = 0, y = 0, z = 0){
-
-if(!soundCache[name]) return
-
-const source = audioContext.createBufferSource()
-
-const panner = audioContext.createPanner()
-
-const gain = audioContext.createGain()
-
-source.buffer = soundCache[name]
-
-panner.setPosition(x,y,z)
+panner.positionX.value = x
+panner.positionY.value = y
+panner.positionZ.value = z
 
 source.connect(panner)
-
-panner.connect(gain)
-
-gain.connect(masterGain)
+panner.connect(this.ctx.destination)
 
 source.start()
 
-emit("audio:spatial", name)
+}
+
+// 🎧 move listener
+setListener(x,y,z){
+this.listener.positionX.value = x
+this.listener.positionY.value = y
+this.listener.positionZ.value = z
+}
 
 }
+
+export default new AudioEngine()
