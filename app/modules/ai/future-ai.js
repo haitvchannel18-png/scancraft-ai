@@ -1,173 +1,106 @@
 // modules/ai/future-ai.js
 
+import Context from "./context.js"
+import LLM from "./llm-engine.js"
+import ImageGen from "./image-generator.js"
 import { EventBus } from "../core/events.js"
 
-import { getContext } from "./context.js"
-import { predictFuture } from "../knowledge/future-predict.js"
+class FutureAI {
 
-import { logAI } from "../utils/ai-logger.js"
-import { cacheKnowledge } from "../memory/cache-manager.js"
-
-let activeObject = null
-let lastFutureResult = null
-
-export function initFutureAI(){
-
-EventBus.on("objectBrainComplete",setObjectContext)
-
-EventBus.emit("futureAIReady")
-
+constructor(){
+this.cache = {}
 }
 
+// 🔥 MAIN FUNCTION
+async generateFuture(userInput = "future version"){
 
+const context = Context.getContext()
+const key = context.object + "_future"
 
-function setObjectContext(payload){
-
-activeObject = payload
-
+// ⚡ CACHE
+if(this.cache[key]){
+return this.cache[key]
 }
 
-
-
-export async function generateFutureConcept(objectName){
+EventBus.emit("futureThinking", {object: context.object})
 
 try{
 
-if(!objectName && activeObject){
-objectName = activeObject.object
+// 🧠 PROMPT
+const prompt = this.buildPrompt(context, userInput)
+
+// 🧠 TEXT FUTURE
+const textResponse = await LLM.generate(prompt)
+
+// 🖼 OPTIONAL IMAGE
+let image = null
+try{
+image = await ImageGen.generate({
+prompt: `futuristic ${context.object}, advanced technology, sci-fi design`
+})
+}catch(e){
+image = null
 }
 
-if(!objectName){
-return null
-}
+// 🎯 FORMAT
+const result = this.formatFuture(textResponse, image, context)
 
-const context = getContext()
+// 💾 CACHE
+this.cache[key] = result
 
-const prediction = await predictFuture(objectName,context)
-
-const concepts = buildFutureConcepts(objectName,prediction)
-
-const result = {
-
-object: objectName,
-
-prediction,
-
-concepts,
-
-generatedAt: Date.now()
-
-}
-
-lastFutureResult = result
-
-cacheKnowledge("future-"+objectName,result)
-
-EventBus.emit("futureConceptReady",result)
-
-logAI("FutureAI",result)
+EventBus.emit("futureReady", result)
 
 return result
 
 }catch(err){
 
-console.error("Future AI error",err)
+EventBus.emit("futureError", err)
 
-EventBus.emit("futureAIError",err)
-
-return null
-
+return {
+title: "Future prediction unavailable",
+text: "",
+image: null
 }
 
 }
 
+}
 
+// 🧠 PROMPT BUILDER
+buildPrompt(context, userInput){
 
-function buildFutureConcepts(objectName,prediction){
+return `
+You are a futuristic AI.
 
-const concepts = []
+Object: ${context.object}
+Category: ${context.category}
+Material: ${context.material}
 
-prediction.trends.forEach((trend,index)=>{
+User request: ${userInput}
 
-concepts.push({
+Explain:
+1. How this object may evolve in future
+2. New technologies added
+3. Improvements in design
+4. Smart features
 
-id:index+1,
+Make it exciting and realistic.
+`
+}
 
-title:`Future ${objectName} concept ${index+1}`,
+// 🎯 FORMAT OUTPUT
+formatFuture(text, image, context){
 
-trend,
-
-description:`Future ${objectName} may evolve with ${trend} technology.`,
-
-designHints:generateDesignHints(objectName,trend)
-
-})
-
-})
-
-return concepts
+return {
+object: context.object,
+title: `Future of ${context.object}`,
+description: text,
+image: image,
+timestamp: Date.now()
+}
 
 }
 
-
-
-function generateDesignHints(objectName,trend){
-
-const hints = []
-
-if(trend.includes("AI")){
-
-hints.push("integrated AI system")
-hints.push("smart automation")
-
 }
 
-if(trend.includes("eco")){
-
-hints.push("eco friendly materials")
-hints.push("recyclable design")
-
-}
-
-if(trend.includes("smart")){
-
-hints.push("IoT connectivity")
-hints.push("sensor integration")
-
-}
-
-if(objectName.toLowerCase().includes("car")){
-
-hints.push("autonomous driving")
-hints.push("electric propulsion")
-
-}
-
-if(objectName.toLowerCase().includes("bottle")){
-
-hints.push("self cooling material")
-hints.push("smart hydration tracking")
-
-}
-
-return hints
-
-}
-
-
-
-export function getLastFutureConcept(){
-
-return lastFutureResult
-
-}
-
-
-
-export function clearFutureConcept(){
-
-lastFutureResult = null
-
-EventBus.emit("futureConceptCleared")
-
-}
+export default new FutureAI()
