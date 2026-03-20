@@ -5,7 +5,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<title>ScanCraft AI</title>
+<title>ScanCraft AI 💀</title>
 
 <!-- 🔥 PWA -->
 <link rel="manifest" href="./manifest.json" />
@@ -15,6 +15,9 @@
 
 <!-- 🌌 Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet">
+
+<!-- 🔥 Theme Color -->
+<meta name="theme-color" content="#000000" />
 
 </head>
 
@@ -49,12 +52,13 @@
         <span>AI Speaking...</span>
     </div>
 
+    <!-- 🔐 LOGIN BUTTON -->
+    <button id="login-btn" class="login-btn">Login</button>
+
     <!-- 🎮 CONTROL BAR -->
     <div id="controls">
-
         <button id="scan-btn">SCAN</button>
         <button id="stop-btn">STOP</button>
-
     </div>
 
 </div>
@@ -68,13 +72,28 @@
 </div>
 
 <!-- ============================= -->
-<!-- 🚀 APP SCRIPT -->
+<!-- 🚀 MAIN APP SCRIPT -->
 <!-- ============================= -->
 
 <script type="module" src="./app.js"></script>
 
 <!-- ============================= -->
-<!-- 🔧 SERVICE WORKER REGISTER -->
+<!-- 🔐 LOGIN HANDLER -->
+<!-- ============================= -->
+
+<script type="module">
+import Auth from "./modules/auth/auth.js"
+
+const btn = document.getElementById("login-btn")
+
+btn.onclick = async ()=>{
+    const user = await Auth.login()
+    console.log("🔥 Logged in:", user)
+}
+</script>
+
+<!-- ============================= -->
+<!-- 🔧 SERVICE WORKER -->
 <!-- ============================= -->
 
 <script>
