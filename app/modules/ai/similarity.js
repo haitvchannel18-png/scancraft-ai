@@ -1,168 +1,104 @@
 // modules/ai/similarity.js
 
+import VectorDB from "../vision-search/vector-db.js"
 import { EventBus } from "../core/events.js"
-import { getMaterialInfo } from "../knowledge/material-db.js"
-import { searchProductDB } from "../knowledge/product-db.js"
 
-import { cacheKnowledge } from "../memory/cache-manager.js"
-import { logAI } from "../utils/ai-logger.js"
+class SimilarityAI {
 
-let lastComparison = null
+constructor(){
+this.topK = 5
+this.threshold = 0.3
+}
 
-export async function compareObjects(objectA, objectB){
+// 🔥 MAIN FUNCTION
+async findSimilar(vector){
+
+if(!vector){
+return []
+}
+
+EventBus.emit("similaritySearchStart")
 
 try{
 
-if(!objectA || !objectB){
-return null
-}
+// 🔎 SEARCH VECTOR DB
+const results = await VectorDB.search(vector, this.topK)
 
-const infoA = await collectObjectInfo(objectA)
-const infoB = await collectObjectInfo(objectB)
+// 🎯 FILTER + SORT
+const filtered = results
+.filter(r => r.score > this.threshold)
+.sort((a,b)=>b.score - a.score)
 
-const score = calculateSimilarity(infoA,infoB)
+// 🧠 ENHANCED OUTPUT
+const enhanced = filtered.map(r => ({
+label: r.label,
+score: r.score,
+category: r.category || "unknown",
+confidence: this.normalizeScore(r.score)
+}))
 
-const explanation = buildExplanation(infoA,infoB,score)
+EventBus.emit("similaritySearchDone", enhanced)
 
-const result = {
-
-objectA,
-objectB,
-
-similarityScore: score,
-
-materialsMatch: compareMaterials(infoA.materials,infoB.materials),
-
-categoryMatch: infoA.category === infoB.category,
-
-analysis: explanation,
-
-generatedAt: Date.now()
-
-}
-
-lastComparison = result
-
-cacheKnowledge("similarity-"+objectA+"-"+objectB,result)
-
-EventBus.emit("similarityComparisonReady",result)
-
-logAI("SimilarityComparison",result)
-
-return result
+return enhanced
 
 }catch(err){
 
-console.error("Similarity AI error",err)
+EventBus.emit("similarityError", err)
 
-EventBus.emit("similarityAIError",err)
-
-return null
+return []
 
 }
 
 }
 
+// 📊 NORMALIZE SCORE
+normalizeScore(score){
 
+// smooth curve normalization
+return Math.min(1, Math.pow(score, 1.2))
 
-async function collectObjectInfo(objectName){
+}
 
-const materials = await getMaterialInfo(objectName)
+// 🧠 CATEGORY GUESS (fallback)
+inferCategory(similarObjects){
 
-const product = await searchProductDB(objectName)
+const counts = {}
 
-return {
+for(const obj of similarObjects){
 
-object: objectName,
+const cat = obj.category || "unknown"
+counts[cat] = (counts[cat] || 0) + 1
 
-materials: materials || [],
+}
 
-category: product?.category || "unknown"
+let best = "unknown"
+let max = 0
+
+for(const k in counts){
+if(counts[k] > max){
+max = counts[k]
+best = k
+}
+}
+
+return best
+
+}
+
+// 🔥 HYBRID SIMILARITY (advanced)
+mergeWithDetection(detectionLabel, similarObjects){
+
+const labels = similarObjects.map(o=>o.label)
+
+if(labels.includes(detectionLabel)){
+return detectionLabel
+}
+
+// fallback: best similar
+return similarObjects[0]?.label || detectionLabel
 
 }
 
 }
 
-
-
-function calculateSimilarity(a,b){
-
-let score = 0
-
-if(a.category === b.category){
-score += 0.4
-}
-
-const materialScore = computeMaterialSimilarity(a.materials,b.materials)
-
-score += materialScore
-
-return Math.min(score,1)
-
-}
-
-
-
-function computeMaterialSimilarity(matA,matB){
-
-if(!matA || !matB) return 0
-
-const common = matA.filter(m => matB.includes(m))
-
-return common.length / Math.max(matA.length,matB.length) * 0.6
-
-}
-
-
-
-function compareMaterials(matA,matB){
-
-if(!matA || !matB) return []
-
-return matA.filter(m => matB.includes(m))
-
-}
-
-
-
-function buildExplanation(a,b,score){
-
-let text = `Comparison between ${a.object} and ${b.object}:\n`
-
-if(a.category === b.category){
-
-text += "Both objects belong to the same category.\n"
-
-}
-
-const common = compareMaterials(a.materials,b.materials)
-
-if(common.length){
-
-text += `They share similar materials such as ${common.join(", ")}.\n`
-
-}
-
-text += `Overall similarity score: ${(score*100).toFixed(1)}%.`
-
-return text
-
-}
-
-
-
-export function getLastComparison(){
-
-return lastComparison
-
-}
-
-
-
-export function clearComparison(){
-
-lastComparison = null
-
-EventBus.emit("similarityComparisonCleared")
-
-}
+export default new SimilarityAI()
