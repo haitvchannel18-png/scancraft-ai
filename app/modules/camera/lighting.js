@@ -1,144 +1,107 @@
-// ================= IMPORT =================
+/**
+ * ScanCraft AI
+ * Lighting Engine (Auto Exposure + Low Light Enhancement)
+ */
 
-import { emit } from "../core/events.js"
+import Events from "../core/events.js"
+import Performance from "../core/performance.js"
 
+class LightingEngine {
 
-// ================= LIGHTING STATE =================
+constructor(){
 
-let brightness = 1
-let contrast = 1
-let lowLightMode = false
+this.canvas = document.createElement("canvas")
+this.ctx = this.canvas.getContext("2d")
 
+this.brightness = 1
+this.contrast = 1
+this.isLowLight = false
 
-// ================= ANALYZE LIGHT =================
+}
 
-export function analyzeLighting(frame){
+analyze(frame){
+
+const start = performance.now()
+
+const { data } = frame
 
 let total = 0
 
-for(let i=0;i<frame.data.length;i+=4){
-
-const r = frame.data[i]
-const g = frame.data[i+1]
-const b = frame.data[i+2]
-
-const luminance = 0.2126*r + 0.7152*g + 0.0722*b
-
-total += luminance
-
+// brightness calculation (fast sampling)
+for(let i = 0; i < data.length; i += 40){
+total += data[i] // red channel approx
 }
 
-const avgLight = total / (frame.data.length/4)
+const avg = total / (data.length / 40)
 
-if(avgLight < 60){
+this.isLowLight = avg < 80
 
-lowLightMode = true
-emit("lighting:low")
-
-}else{
-
-lowLightMode = false
-emit("lighting:normal")
-
-}
-
-return avgLight
-
-}
-
-
-// ================= AUTO ADJUST =================
-
-export function autoAdjustLighting(frame){
-
-const light = analyzeLighting(frame)
-
-if(light < 60){
-
-brightness = 1.4
-contrast = 1.3
-
-}else if(light > 180){
-
-brightness = 0.9
-contrast = 1.1
-
-}else{
-
-brightness = 1
-contrast = 1
-
-}
-
-emit("lighting:adjusted",{
-brightness,
-contrast
+Events.emit("lighting:analyzed", {
+brightness: avg,
+lowLight: this.isLowLight
 })
 
-return applyLighting(frame)
+return avg
 
 }
 
+enhance(frame){
 
-// ================= APPLY LIGHTING =================
+const start = performance.now()
 
-function applyLighting(frame){
+this.canvas.width = frame.width
+this.canvas.height = frame.height
 
-const data = frame.data
+this.ctx.putImageData(frame, 0, 0)
 
-for(let i=0;i<data.length;i+=4){
+const imageData = this.ctx.getImageData(0, 0, frame.width, frame.height)
+const data = imageData.data
 
-data[i] = clamp((data[i] * brightness - 128) * contrast + 128)
-data[i+1] = clamp((data[i+1] * brightness - 128) * contrast + 128)
-data[i+2] = clamp((data[i+2] * brightness - 128) * contrast + 128)
+const brightnessBoost = this.isLowLight ? 1.4 : 1.0
+const contrastBoost = this.isLowLight ? 1.2 : 1.0
 
-}
+for(let i = 0; i < data.length; i += 4){
 
-return frame
+// brightness
+data[i] *= brightnessBoost     // R
+data[i+1] *= brightnessBoost   // G
+data[i+2] *= brightnessBoost   // B
 
-}
+// contrast (simple)
+data[i] = ((data[i] - 128) * contrastBoost) + 128
+data[i+1] = ((data[i+1] - 128) * contrastBoost) + 128
+data[i+2] = ((data[i+2] - 128) * contrastBoost) + 128
 
-
-// ================= CLAMP =================
-
-function clamp(value){
-
-return Math.max(0, Math.min(255, value))
-
-}
-
-
-// ================= SHADOW REDUCTION =================
-
-export function reduceShadows(frame){
-
-const data = frame.data
-
-for(let i=0;i<data.length;i+=4){
-
-const avg = (data[i] + data[i+1] + data[i+2]) / 3
-
-if(avg < 50){
-
-data[i] += 20
-data[i+1] += 20
-data[i+2] += 20
+// clamp
+data[i] = Math.min(255, Math.max(0, data[i]))
+data[i+1] = Math.min(255, Math.max(0, data[i+1]))
+data[i+2] = Math.min(255, Math.max(0, data[i+2]))
 
 }
 
-}
+this.ctx.putImageData(imageData, 0, 0)
 
-emit("lighting:shadow-reduced")
+const end = performance.now()
 
-return frame
+Performance.mark("lighting-enhance", end - start)
 
-}
+Events.emit("lighting:enhanced", {
+lowLight: this.isLowLight
+})
 
-
-// ================= LIGHT MODE =================
-
-export function isLowLight(){
-
-return lowLightMode
+return imageData
 
 }
+
+auto(frame){
+
+this.analyze(frame)
+return this.enhance(frame)
+
+}
+
+}
+
+const Lighting = new LightingEngine()
+
+export default Lighting
