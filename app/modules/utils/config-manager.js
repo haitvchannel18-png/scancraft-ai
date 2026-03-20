@@ -1,60 +1,60 @@
-// modules/utils/config.js
+// modules/utils/config-manager.js
 
-const CONFIG = {
+import CONFIG from "./config.js"
 
-APP: {
-name: "ScanCraft AI",
-version: "5.1",
-env: "production", // development | production
-debug: true
-},
+class ConfigManager {
 
-AI: {
-maxConcurrentInference: 2,
-confidenceThreshold: 0.6,
-similarityThreshold: 0.7,
-enableOpenWorld: true
-},
+constructor(){
+this.config = structuredClone(CONFIG)
+}
 
-MODEL: {
-basePath: "/models/",
-cacheEnabled: true,
-preload: true,
-warmup: true
-},
+// 🔍 GET
+get(path){
 
-CAMERA: {
-width: 640,
-height: 480,
-fps: 30
-},
+return path.split(".").reduce((obj,key)=>obj?.[key], this.config)
 
-PERFORMANCE: {
-enableGPU: true,
-targetFPS: 30,
-maxQueueSize: 5
-},
+}
 
-NETWORK: {
-timeout: 5000,
-retryAttempts: 2,
-offlineMode: true
-},
+// ✏️ SET
+set(path,value){
 
-UI: {
-animations: true,
-sound: true,
-theme: "dark"
-},
+const keys = path.split(".")
+let obj = this.config
 
-FEATURES: {
-voice: true,
-xray: true,
-3d: true,
-commerce: true,
-learning: true
+keys.slice(0,-1).forEach(k=>{
+if(!obj[k]) obj[k] = {}
+obj = obj[k]
+})
+
+obj[keys[keys.length-1]] = value
+
+}
+
+// 🔄 RESET
+reset(){
+
+this.config = structuredClone(CONFIG)
+
+}
+
+// 💾 SAVE (localStorage)
+save(){
+
+localStorage.setItem("app_config", JSON.stringify(this.config))
+
+}
+
+// 📥 LOAD
+load(){
+
+const data = localStorage.getItem("app_config")
+
+if(data){
+this.config = JSON.parse(data)
 }
 
 }
 
-export default CONFIG
+}
+
+export default new ConfigManager()
