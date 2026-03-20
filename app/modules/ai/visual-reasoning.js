@@ -1,199 +1,148 @@
-// ================= IMPORTS =================
+// modules/ai/visual-reasoning.js
 
-import { emit } from "../core/events.js"
+import Context from "./context.js"
+import { EventBus } from "../core/events.js"
 
+class VisualReasoning {
 
+constructor(){
+this.lastScene = null
+}
 
-// ================= CONFIG =================
+// 🔥 MAIN FUNCTION
+analyzeScene(objects = []){
 
-const RELATION_DISTANCE = 120
+if(!objects.length){
+return null
+}
 
+EventBus.emit("visualReasoningStart")
 
+try{
 
-// ================= ANALYZE SCENE =================
+// 🧠 STEP 1 — SCENE TYPE
+const sceneType = this.inferScene(objects)
 
-export function analyzeScene(detections){
+// 🧠 STEP 2 — RELATIONS
+const relations = this.inferRelations(objects)
 
-emit("ai:scene:start")
+// 🧠 STEP 3 — PURPOSE
+const purpose = this.inferPurpose(sceneType, objects)
 
-const scene = {
+// 🧠 STEP 4 — CONFIDENCE
+const confidence = this.computeConfidence(objects)
 
-objects:[],
-relationships:[],
-summary:""
+// 📦 FINAL OUTPUT
+const result = {
+scene: sceneType,
+objects,
+relations,
+purpose,
+confidence,
+timestamp: Date.now()
+}
+
+// 🧠 UPDATE CONTEXT
+Context.updateScene(sceneType)
+
+this.lastScene = result
+
+EventBus.emit("visualReasoningDone", result)
+
+return result
+
+}catch(err){
+
+EventBus.emit("visualReasoningError", err)
+return null
 
 }
 
-detections.forEach(obj => {
+}
 
-scene.objects.push({
+// 🧠 SCENE DETECTION
+inferScene(objects){
 
-name:obj.name || "object",
+const labels = objects.map(o=>o.label)
 
-box:obj.box,
+if(this.match(labels, ["spoon","pan","knife","bowl"])) return "kitchen"
+if(this.match(labels, ["laptop","keyboard","mouse"])) return "workspace"
+if(this.match(labels, ["car","road","bike"])) return "outdoor transport"
+if(this.match(labels, ["bed","pillow","lamp"])) return "bedroom"
 
-category:obj.category || "unknown"
-
-})
-
-})
-
-scene.relationships = detectRelationships(scene.objects)
-
-scene.summary = generateSceneSummary(scene)
-
-emit("ai:scene:complete",scene)
-
-return scene
+return "general environment"
 
 }
 
-
-
-// ================= DETECT RELATIONSHIPS =================
-
-function detectRelationships(objects){
+// 🔗 RELATION ENGINE
+inferRelations(objects){
 
 const relations = []
 
 for(let i=0;i<objects.length;i++){
-
 for(let j=i+1;j<objects.length;j++){
 
-const a = objects[i]
-const b = objects[j]
-
-const distance = calculateDistance(a.box,b.box)
-
-if(distance < RELATION_DISTANCE){
+const a = objects[i].label
+const b = objects[j].label
 
 relations.push({
-
-objectA:a.name,
-objectB:b.name,
-relation:inferRelation(a,b)
-
+between: [a,b],
+relation: this.getRelation(a,b)
 })
 
 }
-
-}
-
 }
 
 return relations
 
 }
 
+// 🔧 RELATION LOGIC
+getRelation(a,b){
 
+if(a === "knife" && b === "vegetable") return "cutting"
+if(a === "spoon" && b === "bowl") return "eating"
+if(a === "laptop" && b === "keyboard") return "input system"
 
-// ================= RELATION INFERENCE =================
-
-function inferRelation(a,b){
-
-const ay = a.box.y
-const by = b.box.y
-
-if(Math.abs(ay - by) < 30){
-
-return "next to"
+return "co-existing"
 
 }
 
-if(ay < by){
+// 🎯 PURPOSE DETECTION
+inferPurpose(scene, objects){
 
-return "above"
+const purposes = {
+kitchen: "food preparation",
+workspace: "working or studying",
+"outdoor transport": "travel",
+bedroom: "resting"
+}
+
+return purposes[scene] || "general activity"
 
 }
 
-return "below"
+// 📊 CONFIDENCE
+computeConfidence(objects){
+
+const avg = objects.reduce((sum,o)=>sum + (o.score || 0.5),0) / objects.length
+
+return Math.min(1, avg)
 
 }
 
+// 🧩 HELPER
+match(labels, required){
 
-
-// ================= DISTANCE =================
-
-function calculateDistance(boxA,boxB){
-
-const ax = boxA.x + boxA.width/2
-const ay = boxA.y + boxA.height/2
-
-const bx = boxB.x + boxB.width/2
-const by = boxB.y + boxB.height/2
-
-const dx = ax - bx
-const dy = ay - by
-
-return Math.sqrt(dx*dx + dy*dy)
+return required.some(r => labels.includes(r))
 
 }
 
-
-
-// ================= SCENE SUMMARY =================
-
-function generateSceneSummary(scene){
-
-const names = scene.objects.map(o => o.name)
-
-let summary = `The AI system detected ${names.length} objects.`
-
-if(names.length){
-
-summary += ` Objects include: ${names.join(", ")}.`
+// 🔄 GET LAST
+getLastScene(){
+return this.lastScene
+}
 
 }
 
-if(scene.relationships.length){
-
-summary += " Some objects appear to be spatially related."
-
-}
-
-return summary
-
-}
-
-
-
-// ================= SCENE CONTEXT =================
-
-export function detectContext(scene){
-
-const categories = scene.objects.map(o=>o.category)
-
-if(categories.includes("kitchen")){
-
-return "Kitchen environment detected."
-
-}
-
-if(categories.includes("electronics")){
-
-return "Electronics workspace detected."
-
-}
-
-if(categories.includes("furniture")){
-
-return "Indoor room scene detected."
-
-}
-
-return "General environment detected."
-
-}
-
-
-
-// ================= SCENE SCORE =================
-
-export function sceneConfidence(scene){
-
-return Math.min(
-1,
-scene.objects.length * 0.2
-)
-
-}
+export default new VisualReasoning()
